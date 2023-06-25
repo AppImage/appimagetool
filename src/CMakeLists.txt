@@ -34,25 +34,18 @@ target_include_directories(appimagetool
 install(
     TARGETS appimagetool
     RUNTIME DESTINATION bin
-    COMPONENT appimagetool
 )
 
 # install additional resources
 install(
     FILES "${PROJECT_SOURCE_DIR}/resources/appimagetool.desktop"
     DESTINATION share/applications
-    COMPONENT appimagetool
-    EXCLUDE_FROM_ALL
 )
 install(
     FILES "${PROJECT_SOURCE_DIR}/resources/appimagetool.png"
     DESTINATION share/icons/hicolor/128x128/apps
-    COMPONENT appimagetool
-    EXCLUDE_FROM_ALL
 )
 install(
-    FILES "${PROJECT_SOURCE_DIR}/resources/usr/share/metainfo/appimagetool.appdata.xml"
+    FILES "${PROJECT_SOURCE_DIR}/resources/appimagetool.appdata.xml"
     DESTINATION share/metainfo
-    COMPONENT appimagetool
-    EXCLUDE_FROM_ALL
 )
