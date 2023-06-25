@@ -17,10 +17,10 @@ execute_process(
 # set version and build number
 set(VERSION 1-alpha)
 mark_as_advanced(VERSION)
-if("$ENV{TRAVIS_BUILD_NUMBER}" STREQUAL "")
+if("$ENV{GITHUB_RUN_NUMBER}" STREQUAL "")
     set(BUILD_NUMBER "<local dev build>")
 else()
-    set(BUILD_NUMBER "$ENV{TRAVIS_BUILD_NUMBER}")
+    set(BUILD_NUMBER "$ENV{GITHUB_RUN_NUMBER}")
 endif()
 mark_as_advanced(BUILD_NUMBER)
 
