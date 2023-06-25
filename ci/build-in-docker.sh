@@ -54,8 +54,15 @@ docker run --platform "$platform" \
     -w /out \
     "$image" \
     sh <<\EOF
+
 set -euxo pipefail
+
 apk add bash git gcc g++ cmake make musl-dev gpgme-dev libgcrypt-dev argp-standalone file desktop-file-utils wget zstd-dev zstd-static
+
+bash -euxo pipefail /source/ci/install-static-mksquashfs.sh 4.6.1
+
 bash -euxo pipefail /source/ci/build.sh
+
 chown "$OUT_UID" appimagetool*.AppImage
+
 EOF

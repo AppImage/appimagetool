@@ -35,3 +35,23 @@ make -j"$jobs"
 make install DESTDIR=AppDir
 
 find AppDir
+
+cp "$(which mksquashfs)" AppDir/usr/bin
+
+cp "$repo_root"/resources/AppRun.sh AppDir/AppRun
+chmod +x AppDir/AppRun
+
+wget https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-"$ARCH"
+
+pushd AppDir
+ln -s usr/share/applications/appimagetool.desktop .
+ln -s usr/share/icons/hicolor/128x128/apps/appimagetool.png .
+ln -s usr/share/icons/hicolor/128x128/apps/appimagetool.png .DirIcon
+popd
+
+find AppDir
+cat AppDir/appimagetool.desktop
+
+AppDir/AppRun --runtime-file runtime-"$ARCH" AppDir
+
+mv appimagetool-*.AppImage "$old_cwd"
