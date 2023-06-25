@@ -46,4 +46,16 @@ pkg_check_modules(libgcrypt REQUIRED libgcrypt IMPORTED_TARGET)
 pkg_check_modules(libglib REQUIRED glib-2.0 IMPORTED_TARGET)
 pkg_check_modules(libgio REQUIRED gio-2.0 IMPORTED_TARGET)
 
+# Alpine Linux does not ship an argp.h as part of the standard compiler toolchain
+unset(ARGP_H_FOUND CACHE)
+include(CheckCSourceCompiles)
+check_c_source_compiles("
+    #include <argp.h>
+    int main() { return 0; }
+" ARGP_H_FOUND)
+
+if(NOT ARGP_H_FOUND)
+    message(FATAL_ERROR "argp.h not installed, if on Alpine Linux please apk add argp-standalone")
+endif()
+
 add_subdirectory(src)
