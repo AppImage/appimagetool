@@ -34,3 +34,16 @@ Application Options:
   --sign-key                  Key ID to use for gpg[2] signatures
   --sign-args                 Extra arguments to use when signing with gpg[2]
 ```
+
+## Building
+
+To build for various architectures on a local machine (or on GitHub Codespaces) using Docker:
+
+* For 64 bit Intel, run `ARCH=x86_64 bash ./ci/build-in-docker.sh`
+* For 32 bit Intel, run `ARCH=i686 bash ./ci/build-in-docker.sh`
+
+If you are on an Intel machine and would like to cross-compile for ARM:
+
+* Prepare the Docker system for cross-compiling with `docker run --rm --privileged multiarch/qemu-user-static --reset -p yes`, then run
+* For 64 bit ARM, run `ARCH=aarch64 bash ./ci/build-in-docker.sh`
+* For 32 bit ARM, run `ARCH=armhf bash ./ci/build-in-docker.sh`
