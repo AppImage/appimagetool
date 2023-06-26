@@ -79,7 +79,7 @@ gchar *updateinformation = NULL;
 static gboolean guess_update_information = FALSE;
 gchar *bintray_user = NULL;
 gchar *bintray_repo = NULL;
-gchar *sqfs_comp = "gzip";
+gchar *sqfs_comp = NULL;
 gchar **sqfs_opts = NULL;
 gchar *exclude_file = NULL;
 gchar *runtime_file = NULL;
@@ -126,7 +126,6 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
 
         int max_num_args = sqfs_opts_len + 22;
         char* args[max_num_args];
-        bool use_xz = strcmp(sqfs_comp, "xz") >= 0;
 
         int i = 0;
 #ifndef AUXILIARY_FILES_DESTINATION
@@ -139,22 +138,32 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
         args[i++] = "-offset";
         args[i++] = offset_string;
 
-        args[i++] = "-comp";
-        if (use_xz)
-            args[i++] = "xz";
-        else
+        if (sqfs_comp != NULL) {
+            args[i++] = "-comp";
             args[i++] = sqfs_comp;
+        }
 
         args[i++] = "-root-owned";
         args[i++] = "-noappend";
 
-        if (use_xz) {
-            // https://jonathancarter.org/2015/04/06/squashfs-performance-testing/ says:
-            // improved performance by using a 16384 block size with a sacrifice of around 3% more squashfs image space
-            args[i++] = "-Xdict-size";
-            args[i++] = "100%";
-            args[i++] = "-b";
-            args[i++] = "16384";
+        // compression-specific optimization
+        if (sqfs_comp != NULL) {
+            if (strcmp(sqfs_comp, "xz") != 0) {
+                // https://jonathancarter.org/2015/04/06/squashfs-performance-testing/ says:
+                // improved performance by using a 16384 block size with a sacrifice of around 3% more squashfs image space
+                args[i++] = "-Xdict-size";
+                args[i++] = "100%";
+                args[i++] = "-b";
+                args[i++] = "16384";
+            } else if (strcmp(sqfs_comp, "zstd") != 0) {
+                /*
+                 * > Build with 1MiB block size
+                 * > Using a bigger block size than mksquashfs's default improves read speed and can produce smaller AppImages as well
+                 * -- https://github.com/probonopd/go-appimage/commit/c4a112e32e8c2c02d1d388c8fa45a9222a529af3
+                 */
+                args[i++] = "-b";
+                args[i++] = "1M";
+            }
         }
 
         // check if ignore file exists and use it if possible
@@ -572,8 +581,11 @@ main (int argc, char *argv[])
     if (showVersionOnly)
         exit(0);
 
-    if(!((0 == strcmp(sqfs_comp, "gzip")) || (0 ==strcmp(sqfs_comp, "xz"))))
-        die("Only gzip (faster execution, larger files) and xz (slower execution, smaller files) compression is supported at the moment. Let us know if there are reasons for more, should be easy to add. You could help the project by doing some systematic size/performance measurements. Watch for size, execution speed, and zsync delta size.");
+    if(sqfs_comp == NULL) {
+        fprintf(stderr, "WARNING: mksquashfs is going to use its default compression algorithm\n");
+        fprintf(stderr, "Consider passing --comp zstd for best performance\n");
+    }
+
     /* Check for dependencies here. Better fail early if they are not present. */
     if(! g_find_program_in_path ("file"))
         die("file command is missing but required, please install it");
