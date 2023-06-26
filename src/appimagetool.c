@@ -562,7 +562,7 @@ main (int argc, char *argv[])
     // initialize help text of argument
     sprintf(_exclude_file_desc, "Uses given file as exclude file for mksquashfs, in addition to %s.", APPIMAGEIGNORE);
     
-    context = g_option_context_new ("SOURCE [DESTINATION] - Generate, extract, and inspect AppImages");
+    context = g_option_context_new ("SOURCE [DESTINATION] - Generate AppImages from existing AppDirs");
     g_option_context_add_main_entries (context, entries, NULL);
     // g_option_context_add_group (context, gtk_get_option_group (TRUE));
     if (!g_option_context_parse (context, &argc, &argv, &error))
