@@ -30,7 +30,9 @@ case "$ARCH" in
         ;;
 esac
 
-image="$image_prefix"/alpine:3.18
+# libassuan-static is supported only from 3.19 onwards
+# TODO: change this to a stable release once Alpine 3.19 was released
+image="$image_prefix"/alpine:edge
 
 repo_root="$(readlink -f "$(dirname "${BASH_SOURCE[0]}")"/..)"
 
@@ -39,10 +41,14 @@ repo_root="$(readlink -f "$(dirname "${BASH_SOURCE[0]}")"/..)"
 #   b) allow the build scripts to "mv" the binaries into the /out directory
 uid="$(id -u)"
 
+# make sure Docker image is up to date
+docker pull "$image"
+
 # mount workspace read-only, trying to make sure the build doesn't ever touch the source code files
 # of course, this only works reliably if you don't run this script from that directory
 # but it's still not the worst idea to do so
-docker run --platform "$platform" \
+docker run \
+    --platform "$platform" \
     --rm \
     -i \
     -e ARCH \
@@ -57,7 +63,12 @@ docker run --platform "$platform" \
 
 set -euxo pipefail
 
-apk add bash git gcc g++ cmake make musl-dev gpgme-dev libgcrypt-dev argp-standalone file desktop-file-utils wget zstd-dev zstd-static
+apk add bash git gcc g++ cmake make file desktop-file-utils wget \
+    gpgme-dev libgcrypt-dev libgcrypt-static argp-standalone zstd-dev zstd-static util-linux-static \
+    glib-static libassuan-static zlib-static libgpg-error-static
+
+# in a Docker container, we can safely disable this check
+git config --global --add safe.directory '*'
 
 bash -euxo pipefail /source/ci/install-static-mksquashfs.sh 4.6.1
 
