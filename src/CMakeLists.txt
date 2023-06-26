@@ -1,7 +1,6 @@
 add_executable(appimagetool
     appimagetool.c
     appimagetool_sign.c
-    binreloc.c
     hexlify.c
     elf.c
     digest.c
@@ -23,7 +22,6 @@ target_compile_definitions(appimagetool
     PRIVATE -DGIT_VERSION="${GIT_VERSION}"
     PRIVATE -DBUILD_NUMBER="${BUILD_NUMBER}"
     PRIVATE -DBUILD_DATE="${DATE}"
-    PRIVATE -DENABLE_BINRELOC
 )
 
 target_include_directories(appimagetool

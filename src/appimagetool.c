@@ -44,8 +44,6 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 
-#include "binreloc.h"
-
 #include <libgen.h>
 
 #include <unistd.h>
