@@ -29,6 +29,9 @@ jobs:
         run: |
           bash -ex ci/build-in-docker.sh
 
+      - name: List files
+        run: find
+
       - name: Upload artifact
         uses: actions/upload-artifact@v1.0.0
         with:
