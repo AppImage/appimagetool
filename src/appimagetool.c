@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright (c) 2004-19 Simon Peter
+ * Copyright (c) 2004-23 Simon Peter
  * 
  * All Rights Reserved.
  * 
@@ -77,8 +77,6 @@ static gboolean no_appstream = FALSE;
 gchar **remaining_args = NULL;
 gchar *updateinformation = NULL;
 static gboolean guess_update_information = FALSE;
-gchar *bintray_user = NULL;
-gchar *bintray_repo = NULL;
 gchar *sqfs_comp = NULL;
 gchar **sqfs_opts = NULL;
 gchar *exclude_file = NULL;
@@ -495,8 +493,6 @@ static GOptionEntry entries[] =
     { "list", 'l', 0, G_OPTION_ARG_NONE, &list, "List files in SOURCE AppImage", NULL },
     { "updateinformation", 'u', 0, G_OPTION_ARG_STRING, &updateinformation, "Embed update information STRING; if zsyncmake is installed, generate zsync file", NULL },
     { "guess", 'g', 0, G_OPTION_ARG_NONE, &guess_update_information, "Guess update information based on Travis CI or GitLab environment variables", NULL },
-    { "bintray-user", 0, 0, G_OPTION_ARG_STRING, &bintray_user, "Bintray user name", NULL },
-    { "bintray-repo", 0, 0, G_OPTION_ARG_STRING, &bintray_repo, "Bintray repository", NULL },
     { "version", 0, 0, G_OPTION_ARG_NONE, &showVersionOnly, "Show version number", NULL },
     { "verbose", 'v', 0, G_OPTION_ARG_NONE, &verbose, "Produce verbose output", NULL },
     { "sign", 's', 0, G_OPTION_ARG_NONE, &sign, "Sign with gpg[2]", NULL },
@@ -896,15 +892,6 @@ main (int argc, char *argv[])
             exit(1);
         }
         
-        if(bintray_user != NULL){
-            if(bintray_repo != NULL){
-                char buf[1024];
-                sprintf(buf, "bintray-zsync|%s|%s|%s|%s-_latestVersion-%s.AppImage.zsync", bintray_user, bintray_repo, app_name_for_filename, app_name_for_filename, arch);
-                updateinformation = buf;
-                printf("%s\n", updateinformation);
-            }
-        }
-        
         /* If the user has not provided update information but we know this is a Travis CI build,
          * then fill in update information based on TRAVIS_REPO_SLUG */
         if(guess_update_information){
@@ -956,10 +943,9 @@ main (int argc, char *argv[])
         /* If updateinformation was provided, then we check and embed it */
         if(updateinformation != NULL){
             if(!g_str_has_prefix(updateinformation,"zsync|"))
-                if(!g_str_has_prefix(updateinformation,"bintray-zsync|"))
-                    if(!g_str_has_prefix(updateinformation,"gh-releases-zsync|"))
-                        if(!g_str_has_prefix(updateinformation,"pling-v1-zsync|"))
-                            die("The provided updateinformation is not in a recognized format");
+                if(!g_str_has_prefix(updateinformation,"gh-releases-zsync|"))
+                    if(!g_str_has_prefix(updateinformation,"pling-v1-zsync|"))
+                        die("The provided updateinformation is not in a recognized format");
                 
             gchar **ui_type = g_strsplit_set(updateinformation, "|", -1);
                         
