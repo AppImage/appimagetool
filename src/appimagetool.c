@@ -538,7 +538,7 @@ main (int argc, char *argv[])
     // and the slash that follows it
     char* github_repository = getenv("GITHUB_REPOSITORY");
     char* github_repository_owner = getenv("GITHUB_REPOSITORY_OWNER");
-    char* github_repository_name = "";
+    char* github_repository_name = NULL;
     if (github_repository_owner != NULL && github_repository != NULL) {
         char* owner_start = strstr(github_repository, github_repository_owner);
         if (owner_start != NULL) {
