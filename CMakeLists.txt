@@ -31,9 +31,42 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
+# for distribution purposes, we need fully static builds
+# all of our dependencies are available as static packages on Alpine Linux, which is great!
+# you can use ci/build-in-docker.sh to build release-able AppImages of this tool
+# by default, static builds are off allow for working on this tool on any distribution
+option(BUILD_STATIC OFF)
+
+if(BUILD_STATIC)
+    # since this project does not expose any libraries, we can safely set the linker flag globally
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -no-pie")
+
+    # test if compiling a simple binary works with these flags
+    unset(STATIC_BUILDS_WORKING CACHE)
+    include(CheckCSourceCompiles)
+    check_c_source_compiles("
+        int main() { return 0; }
+    " STATIC_BUILDS_WORKING)
+
+    if(NOT STATIC_BUILDS_WORKING)
+        message(FATAL_ERROR "static builds do not work on this system")
+    endif()
+endif()
+
 # required for appimagetool's signing
 # we're using CMake's pkg-config integration directly, since we want to link those statically
 find_package(PkgConfig REQUIRED)
+
+# note: the following code is a workaround (well, hack) around CMake's limited pkg-config IMPORTED_TARGET support
+# out of the box, CMake does not provide PkgConfig::<target> targets for static build variants of the libraries we use
+# we can either use this workaround, which will
+# see https://gitlab.kitware.com/cmake/cmake/-/issues/21714 for the corresponding feature request and
+# https://gitlab.kitware.com/cmake/cmake/-/issues/21714#note_1074454 for more information on the workaround
+if(BUILD_STATIC)
+    # again, since this project does not expose any libraries, we can safely set this option globally
+    set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
+    list(APPEND PKG_CONFIG_EXECUTABLE "--static")
+endif()
 
 # note: the names of the targets we create with pkg_check_modules should differ from what you pass to `-l`
 # this allows us to catch problems in our own CMake setup

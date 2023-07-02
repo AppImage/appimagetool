@@ -22,7 +22,7 @@ old_cwd="$(readlink -f "$PWD")"
 
 pushd "$build_dir"
 
-cmake "$repo_root" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr
+cmake "$repo_root" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_STATIC=ON
 
 if [[ "${GITHUB_ACTIONS:-}" != "" ]]; then
     jobs="$(nproc)"
