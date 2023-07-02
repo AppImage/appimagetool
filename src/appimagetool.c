@@ -543,10 +543,10 @@ main (int argc, char *argv[])
         char* owner_start = strstr(github_repository, github_repository_owner);
         if (owner_start != NULL) {
             owner_start += strlen(github_repository_owner);
-            if (*owner_start == '/') {
-                owner_start++; // Skip the '/'
-                github_repository_name = owner_start;
-            }
+             // Skip the '/'
+            if (*owner_start == '/')
+                owner_start++;
+            github_repository_name = owner_start;
         }
     }
 
