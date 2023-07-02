@@ -824,7 +824,7 @@ main (int argc, char *argv[])
                     g_print("In case of issues, please refer to https://github.com/ximion/appstream\n");
                     int ret = run_external(g_find_program_in_path ("appstreamcli"), args);
                     if (ret != 0)
-                        die("Failed to validate AppStream information with appstreamcli");
+                        g_print("WARNING: Failed to validate AppStream information with appstreamcli");
                 }
                 /* It seems that hughsie's appstream-util does additional validations */
                 if(g_find_program_in_path ("appstream-util")) {
@@ -838,7 +838,7 @@ main (int argc, char *argv[])
                     g_print("In case of issues, please refer to https://github.com/hughsie/appstream-glib\n");
                     int ret = run_external(g_find_program_in_path ("appstream-util"), args);
                     if (ret != 0)
-                        die("Failed to validate AppStream information with appstream-util");
+                        g_print("WARNING: Failed to validate AppStream information with appstream-util");
                 }
             }
         }
