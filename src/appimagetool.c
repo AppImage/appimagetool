@@ -543,7 +543,7 @@ main (int argc, char *argv[])
         char* owner_start = strstr(github_repository, github_repository_owner);
         if (owner_start != NULL) {
             owner_start += strlen(github_repository_owner);
-             // Skip the '/'
+            // Skip the '/'
             if (*owner_start == '/')
                 owner_start++;
             github_repository_name = owner_start;
@@ -578,7 +578,7 @@ main (int argc, char *argv[])
     GOptionContext *context;
 
     // initialize help text of argument
-    snprintf(_exclude_file_desc, "Uses given file as exclude file for mksquashfs, in addition to %s.", APPIMAGEIGNORE);
+    sprintf(_exclude_file_desc, "Uses given file as exclude file for mksquashfs, in addition to %s.", APPIMAGEIGNORE);
     
     context = g_option_context_new ("SOURCE [DESTINATION] - Generate AppImages from existing AppDirs");
     g_option_context_add_main_entries (context, entries, NULL);
@@ -750,7 +750,7 @@ main (int argc, char *argv[])
         fprintf(stderr, "Using architecture %s\n", arch);
 
         char app_name_for_filename[PATH_MAX];
-        snprintf(app_name_for_filename, PATH_MAX, "%s", get_desktop_entry(kf, "Name"));
+        sprintf(app_name_for_filename, PATH_MAX, "%s", get_desktop_entry(kf, "Name"));
         replacestr(app_name_for_filename, " ", "_");
         
         if(verbose)
@@ -765,9 +765,9 @@ main (int argc, char *argv[])
 
             // if $VERSION is specified, we embed it into the filename
             if (version_env != NULL) {
-                snprintf(dest_path, "%s-%s-%s.AppImage", app_name_for_filename, version_env, arch);
+                sprintf(dest_path, "%s-%s-%s.AppImage", app_name_for_filename, version_env, arch);
             } else {
-                snprintf(dest_path, "%s-%s.AppImage", app_name_for_filename, arch);
+                sprintf(dest_path, "%s-%s.AppImage", app_name_for_filename, arch);
             }
 
             destination = strdup(dest_path);
@@ -826,7 +826,7 @@ main (int argc, char *argv[])
         /* Check if AppStream upstream metadata is present in source AppDir */
         if(! no_appstream){
             char application_id[PATH_MAX];
-            snprintf (application_id,  "%s", basename(desktop_file));
+            sprintf (application_id,  "%s", basename(desktop_file));
             replacestr(application_id, ".desktop", ".appdata.xml");
             gchar *appdata_path = g_build_filename(source, "/usr/share/metainfo/", application_id, NULL);
             if (! g_file_test(appdata_path, G_FILE_TEST_IS_REGULAR)){
