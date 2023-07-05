@@ -1090,12 +1090,7 @@ main (int argc, char *argv[])
 
         if (sign) {
             if (!sign_appimage(destination, sign_key, verbose)) {
-                if (getenv(FORCE_SIGN_ENV_VAR) != NULL) {
-                    fprintf(stderr, "ERROR: signing failed, aborting\n");
-                    exit(1);
-                } else {
-                    fprintf(stderr, "ERROR: signing failed, continuing\n");
-                }
+                die("Signing failed, aborting");
             }
         }
 

@@ -358,9 +358,9 @@ bool sign_appimage(char* appimage_filename, char* key_id, bool verbose) {
         if (sscanf(engine_info->version, "%u.%u", &major, &minor) == 2) {
             if (major == 2) {
                 if (minor == 0) {
-                    fprintf(stderr, "[sign] warning: loopback pinentry mode not supported with gpg 2.0.x, %s may not work\n", FORCE_SIGN_ENV_VAR);
+                    fprintf(stderr, "[sign] warning: loopback pinentry mode not supported with gpg 2.0.x, signing may fail silently\n");
                 } else if (minor == 1) {
-                    fprintf(stderr, "[sign] warning: gpg 2.1.x detected, %s can only work with allow-loopback-entry set within the gpg-agent configuration\n", FORCE_SIGN_ENV_VAR);
+                    fprintf(stderr, "[sign] warning: gpg 2.1.x detected, signing may fail silently unless allow-loopback-entry is set within the gpg-agent configuration\n");
                 }
             } else {
                 fprintf(stderr, "[sign] error: unsupported engine version, aborting\n");
