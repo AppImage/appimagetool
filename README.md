@@ -33,6 +33,19 @@ Application Options:
   --sign-args                 Extra arguments to use when signing with gpg[2]
 ```
 
+
+### Environment variables
+
+Some of the parameters above can alternatively be specified as environment variables. Also, some additional environment variables are available, too.
+
+- `ARCH`: Needs to be set whenever appimagetool cannot automatically determine the architecture of the binaries inside the AppDir to choose a suitable runtime (e.g., when binaries for multiple architectures or just shell scripts are contained in there).
+- `APPIMAGETOOL_FORCE_SIGN`: By default, if signing fails, appimagetool just logs a warning but will not abort immediately. If this environment variable is set, appimagetool exits with a non-zero return code.
+- `APPIMAGETOOL_SIGN_PASSPHRASE`: If the `--sign-key` is encrypted and requires a passphrase to be used for signing (and, for some reason, GnuPG cannot be used interactively, e.g., in a CI environment), this environment variable can be used to safely pass the key.
+- `GITHUB_TOKEN`: If set to any value, appimagetool will try to guess some update information to the current repository's release page. Note that this guessing is opinionated and requires the releases to be set up in a specific way. If it is *not* set up, AppImageUpdate will try to update but always fail.
+- `CI_COMMIT_REF_NAME`: If this (and a few other) environment variables are set by GitLab CI, update information will be guessed in a way similar to the GitHub actions code. Again, this approach is opinionated and assumes a matching setup.
+- `VERSION`: This value will be inserted by appimagetool into the root desktop file and (if the destination parameter is not provided by the user) in the output filename.
+
+
 ## Building
 
 To build for various architectures on a local machine (or on GitHub Codespaces) using Docker:
