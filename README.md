@@ -21,7 +21,7 @@ Help Options:
 Application Options:
   -l, --list                  List files in SOURCE AppImage
   -u, --updateinformation     Embed update information STRING; if zsyncmake is installed, generate zsync file
-  -g, --guess                 Guess update information based on GitHub or GitLab environment variables
+  -g, --guess                 Guess update information based on environment variables set by common CI systems (GitHub actions, GitLab CI)
   --version                   Show version number
   -v, --verbose               Produce verbose output
   -s, --sign                  Sign with gpg[2]
