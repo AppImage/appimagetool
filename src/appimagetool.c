@@ -956,7 +956,12 @@ main (int argc, char *argv[])
                                     channel = "latest";
                                 }
                             }
-                        sprintf(buf, "gh-releases-zsync|%s|%s|%s|%s*-%s.AppImage.zsync", parts[0], parts[1], channel, app_name_for_filename, arch);
+                        int ret = snprintf(buf, sizeof(buf), "gh-releases-zsync|%s|%s|%s|%s*-%s.AppImage.zsync", parts[0], parts[1], channel, app_name_for_filename, arch);
+                        if (ret < 0) {
+                            die("snprintf error");
+                        } else if (ret >= sizeof(buf)) {
+                            die("snprintf buffer overflow");
+                        }
                         updateinformation = buf;
                         printf("Guessing update information based on $TRAVIS_TAG=%s and $TRAVIS_REPO_SLUG=%s\n", travis_tag, travis_repo_slug);
                         printf("%s\n", updateinformation);
