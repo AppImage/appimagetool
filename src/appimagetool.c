@@ -578,7 +578,7 @@ main (int argc, char *argv[])
     GOptionContext *context;
 
     // initialize help text of argument
-    sprintf(_exclude_file_desc, "Uses given file as exclude file for mksquashfs, in addition to %s.", APPIMAGEIGNORE);
+    snprintf(_exclude_file_desc, "Uses given file as exclude file for mksquashfs, in addition to %s.", APPIMAGEIGNORE);
     
     context = g_option_context_new ("SOURCE [DESTINATION] - Generate AppImages from existing AppDirs");
     g_option_context_add_main_entries (context, entries, NULL);
@@ -750,7 +750,7 @@ main (int argc, char *argv[])
         fprintf(stderr, "Using architecture %s\n", arch);
 
         char app_name_for_filename[PATH_MAX];
-        sprintf(app_name_for_filename, "%s", get_desktop_entry(kf, "Name"));
+        snprintf(app_name_for_filename, PATH_MAX, "%s", get_desktop_entry(kf, "Name"));
         replacestr(app_name_for_filename, " ", "_");
         
         if(verbose)
@@ -765,9 +765,9 @@ main (int argc, char *argv[])
 
             // if $VERSION is specified, we embed it into the filename
             if (version_env != NULL) {
-                sprintf(dest_path, "%s-%s-%s.AppImage", app_name_for_filename, version_env, arch);
+                snprintf(dest_path, "%s-%s-%s.AppImage", app_name_for_filename, version_env, arch);
             } else {
-                sprintf(dest_path, "%s-%s.AppImage", app_name_for_filename, arch);
+                snprintf(dest_path, "%s-%s.AppImage", app_name_for_filename, arch);
             }
 
             destination = strdup(dest_path);
@@ -826,7 +826,7 @@ main (int argc, char *argv[])
         /* Check if AppStream upstream metadata is present in source AppDir */
         if(! no_appstream){
             char application_id[PATH_MAX];
-            sprintf (application_id,  "%s", basename(desktop_file));
+            snprintf (application_id,  "%s", basename(desktop_file));
             replacestr(application_id, ".desktop", ".appdata.xml");
             gchar *appdata_path = g_build_filename(source, "/usr/share/metainfo/", application_id, NULL);
             if (! g_file_test(appdata_path, G_FILE_TEST_IS_REGULAR)){
@@ -926,7 +926,12 @@ main (int argc, char *argv[])
                     if(zsyncmake_path){
                         char buf[1024];
                         // gh-releases-zsync|probono|AppImages|latest|Subsurface-*x86_64.AppImage.zsync
-                        sprintf(buf, "gh-releases-zsync|%s|%s|latest|%s*-%s.AppImage.zsync", github_repository_owner, github_repository_name, app_name_for_filename, arch);
+                        int ret = snprintf(buf, "gh-releases-zsync|%s|%s|latest|%s*-%s.AppImage.zsync", github_repository_owner, github_repository_name, app_name_for_filename, arch);
+                        if (ret < 0) {
+                            die("snprintf error");
+                        } else if (ret >= sizeof(buf)) {
+                            die("snprintf buffer overflow");
+                        }
                         updateinformation = buf;
                         printf("Guessing update information based on $GITHUB_REPOSITORY=%s\n", github_repository);
                         printf("%s\n", updateinformation);
@@ -974,7 +979,12 @@ main (int argc, char *argv[])
                 gchar *zsyncmake_path = g_find_program_in_path ("zsyncmake");
                 if(zsyncmake_path){
                     char buf[1024];
-                    sprintf(buf, "zsync|%s/-/jobs/artifacts/%s/raw/%s-%s.AppImage.zsync?job=%s", CI_PROJECT_URL, CI_COMMIT_REF_NAME, app_name_for_filename, arch, CI_JOB_NAME);
+                    int ret = snprintf(buf, sizeof(buf), "zsync|%s/-/jobs/artifacts/%s/raw/%s-%s.AppImage.zsync?job=%s", CI_PROJECT_URL, CI_COMMIT_REF_NAME, app_name_for_filename, arch, CI_JOB_NAME);
+                    if (ret < 0) {
+                        die("snprintf error");
+                    } else if (ret >= sizeof(buf)) {
+                        die("snprintf buffer overflow");
+                    }
                     updateinformation = buf;
                     printf("Guessing update information based on $CI_COMMIT_REF_NAME=%s and $CI_JOB_NAME=%s\n", CI_COMMIT_REF_NAME, CI_JOB_NAME);
                     printf("%s\n", updateinformation);
