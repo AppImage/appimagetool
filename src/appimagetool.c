@@ -750,7 +750,7 @@ main (int argc, char *argv[])
         fprintf(stderr, "Using architecture %s\n", arch);
 
         char app_name_for_filename[PATH_MAX];
-        sprintf(app_name_for_filename, PATH_MAX, "%s", get_desktop_entry(kf, "Name"));
+        sprintf(app_name_for_filename, "%s", get_desktop_entry(kf, "Name"));
         replacestr(app_name_for_filename, " ", "_");
         
         if(verbose)
