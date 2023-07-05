@@ -726,11 +726,21 @@ main (int argc, char *argv[])
         fprintf(stderr, "Using architecture %s\n", arch);
 
         char app_name_for_filename[PATH_MAX];
-        sprintf(app_name_for_filename, "%s", get_desktop_entry(kf, "Name"));
-        replacestr(app_name_for_filename, " ", "_");
-        
-        if(verbose)
-            fprintf (stderr,"App name for filename: %s\n", app_name_for_filename);
+        {
+            const char* const env_app_name = getenv("APPIMAGETOOL_APP_NAME");
+            if (env_app_name != NULL) {
+                fprintf(stderr, "Using user-specified app name: %s\n", env_app_name);
+                strncpy(app_name_for_filename, env_app_name, PATH_MAX);
+            } else {
+                const gchar* const desktop_file_app_name = get_desktop_entry(kf, "Name");
+                sprintf(app_name_for_filename, "%s", desktop_file_app_name);
+                replacestr(app_name_for_filename, " ", "_");
+
+                if (verbose) {
+                    fprintf(stderr, "Using app name extracted from desktop file: %s\n", app_name_for_filename);
+                }
+            }
+        }
         
         if (remaining_args[1]) {
             destination = remaining_args[1];
