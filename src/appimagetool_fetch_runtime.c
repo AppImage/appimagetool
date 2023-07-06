@@ -104,12 +104,10 @@ bool fetch_runtime(char* arch, size_t* size, char** buffer, bool verbose) {
         return false;
     }
 
-    int blub;
-
     // note: we should not need any more redirects
-    blub = curl_easy_setopt(handle, CURLOPT_URL, effective_url);
-    blub = curl_easy_setopt(handle, CURLOPT_WRITEDATA, (void*) file_buffer);
-    blub = curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, curl_error_buf);
+    curl_easy_setopt(handle, CURLOPT_URL, effective_url);
+    curl_easy_setopt(handle, CURLOPT_WRITEDATA, (void*) file_buffer);
+    curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, curl_error_buf);
     if (verbose) {
         curl_easy_setopt(handle, CURLOPT_VERBOSE, 1L);
     }
