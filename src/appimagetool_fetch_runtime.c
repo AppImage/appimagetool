@@ -14,9 +14,10 @@ bool fetch_runtime(char* arch, size_t* size, char** buffer, bool verbose) {
     // not the cleanest approach to globally init curl here, but this method shouldn't be called more than once anyway
     curl_global_init(CURL_GLOBAL_ALL);
 
-    char* url = NULL;
-    int url_size = asprintf(&url, "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-%s", arch);
-    if (url_size <= 0) {
+    // should be plenty big for the URL
+    char url[1024];
+    int url_size = snprintf(url, sizeof(url), "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-%s", arch);
+    if (url_size <= 0 || url_size >= sizeof(url)) {
         fprintf(stderr, "Failed to generate runtime URL\n");
         curl_global_cleanup();
         return false;
@@ -140,14 +141,14 @@ bool fetch_runtime(char* arch, size_t* size, char** buffer, bool verbose) {
 
     *size = content_length;
 
-    *buffer = (void*) calloc(content_length + 1, 1);
+    *buffer = (char*) calloc(content_length + 1, 1);
 
     if (*buffer == NULL) {
         fprintf(stderr, "Failed to allocate buffer\n");
         return false;
     }
 
-    memcpy(*buffer, raw_buffer, sizeof(raw_buffer));
+    memcpy((void* ) *buffer, raw_buffer, sizeof(raw_buffer));
 
     return true;
 }
