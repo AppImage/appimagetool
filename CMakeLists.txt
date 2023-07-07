@@ -78,6 +78,7 @@ pkg_check_modules(libgcrypt REQUIRED libgcrypt IMPORTED_TARGET)
 # TODO: in the long term, we plan to get rid of GLib/GIO by moving to C++
 pkg_check_modules(libglib REQUIRED glib-2.0 IMPORTED_TARGET)
 pkg_check_modules(libgio REQUIRED gio-2.0 IMPORTED_TARGET)
+pkg_check_modules(libcurl REQUIRED libcurl IMPORTED_TARGET)
 
 # Alpine Linux does not ship an argp.h as part of the standard compiler toolchain
 unset(ARGP_H_FOUND CACHE)

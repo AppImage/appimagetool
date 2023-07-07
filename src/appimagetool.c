@@ -55,14 +55,15 @@
 
 #include "util.h"
 
+#include "appimagetool_fetch_runtime.h"
 #include "appimagetool_sign.h"
 
-enum fARCH { 
-    fARCH_i386,
+typedef enum {
+    fARCH_i686,
     fARCH_x86_64,
-    fARCH_arm,
+    fARCH_armhf,
     fARCH_aarch64
-};
+} fARCH;
 
 static gchar const APPIMAGEIGNORE[] = ".appimageignore";
 static char _exclude_file_desc[256];
@@ -286,42 +287,55 @@ int count_archs(bool* archs) {
     return countArchs;
 }
 
+gchar* archToName(fARCH arch) {
+    switch (arch) {
+        case fARCH_aarch64:
+            return "aarch64";
+        case fARCH_armhf:
+            return "armhf";
+        case fARCH_i686:
+            return "i686";
+        case fARCH_x86_64:
+            return "x86_64";
+    }
+}
+
 gchar* getArchName(bool* archs) {
-    if (archs[fARCH_i386])
-        return "i386";
+    if (archs[fARCH_i686])
+        return archToName(fARCH_i686);
     else if (archs[fARCH_x86_64])
-        return "x86_64";
-    else if (archs[fARCH_arm])
-        return "armhf";
+        return archToName(fARCH_x86_64);
+    else if (archs[fARCH_armhf])
+        return archToName(fARCH_armhf);
     else if (archs[fARCH_aarch64])
-        return "aarch64";
+        return archToName(fARCH_aarch64);
     else
         return "all";
 }
 
 void extract_arch_from_e_machine_field(int16_t e_machine, const gchar* sourcename, bool* archs) {
     if (e_machine == 3) {
-        archs[fARCH_i386] = 1;
+        archs[fARCH_i686] = 1;
         if(verbose)
-            fprintf(stderr, "%s used for determining architecture i386\n", sourcename);
+            fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(fARCH_i686));
     }
 
     if (e_machine == 62) {
         archs[fARCH_x86_64] = 1;
         if(verbose)
-            fprintf(stderr, "%s used for determining architecture x86_64\n", sourcename);
+            fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(fARCH_x86_64));
     }
 
     if (e_machine == 40) {
-        archs[fARCH_arm] = 1;
+        archs[fARCH_armhf] = 1;
         if(verbose)
-            fprintf(stderr, "%s used for determining architecture armhf\n", sourcename);
+            fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(fARCH_armhf));
     }
 
     if (e_machine == 183) {
         archs[fARCH_aarch64] = 1;
         if(verbose)
-            fprintf(stderr, "%s used for determining architecture aarch64\n", sourcename);
+            fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(fARCH_aarch64));
     }
 }
 
@@ -340,7 +354,7 @@ void extract_arch_from_text(gchar *archname, const gchar* sourcename, bool* arch
                     || g_ascii_strncasecmp("intel_80586", archname, 20) == 0
                     || g_ascii_strncasecmp("intel_80686", archname, 20) == 0
                     ) {
-                archs[fARCH_i386] = 1;
+                archs[fARCH_i686] = 1;
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture i386\n", sourcename);
             } else if (g_ascii_strncasecmp("x86_64", archname, 20) == 0) {
@@ -348,7 +362,7 @@ void extract_arch_from_text(gchar *archname, const gchar* sourcename, bool* arch
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture x86_64\n", sourcename);
             } else if (g_ascii_strncasecmp("arm", archname, 20) == 0) {
-                archs[fARCH_arm] = 1;
+                archs[fARCH_armhf] = 1;
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture ARM\n", sourcename);
             } else if (g_ascii_strncasecmp("arm_aarch64", archname, 20) == 0) {
@@ -429,7 +443,7 @@ gchar* get_desktop_entry(GKeyFile *kf, char *key) {
     return value;
 }
 
-bool readFile(char* filename, int* size, char** buffer) {
+bool readFile(char* filename, size_t* size, char** buffer) {
     FILE* f = fopen(filename, "rb");
     if (f==NULL) {
         *buffer = 0;
@@ -858,22 +872,17 @@ main (int argc, char *argv[])
         * should hopefully change that. */
 
         fprintf (stderr, "Generating squashfs...\n");
-        int size = 0;
+        size_t size = 0;
         char* data = NULL;
-        bool using_external_data = false;
+        // TODO: just write to the output file directly, we don't really need a memory buffer
         if (runtime_file != NULL) {
-            if (!readFile(runtime_file, &size, &data))
+            if (!readFile(runtime_file, &size, &data)) {
                 die("Unable to load provided runtime file");
-            using_external_data = true;
+            }
         } else {
-#ifdef HAVE_BINARY_RUNTIME
-            /* runtime is embedded into this executable
-            * http://stupefydeveloper.blogspot.de/2008/08/cc-embed-binary-data-into-elf.html */
-            size = runtime_len;
-            data = runtime;
-#else
-            die("No runtime file was provided");
-#endif
+            if (!fetch_runtime(arch, &size, &data, verbose)) {
+                die("Failed to download runtime file");
+            }
         }
         if (verbose)
             printf("Size of the embedded runtime: %d bytes\n", size);
@@ -891,8 +900,8 @@ main (int argc, char *argv[])
         fseek(fpdst, 0, SEEK_SET);
         fwrite(data, size, 1, fpdst);
         fclose(fpdst);
-        if (using_external_data)
-            free(data);
+        // TODO: avoid memory buffer (see above)
+        free(data);
 
         fprintf (stderr, "Marking the AppImage as executable...\n");
         if (chmod (destination, 0755) < 0) {
