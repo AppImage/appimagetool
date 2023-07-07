@@ -136,31 +136,29 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
         args[i++] = offset_string;
 
         if (sqfs_comp != NULL) {
-            args[i++] = "-comp";
-            args[i++] = sqfs_comp;
+            sqfs_comp = "zstd";
         }
 
         args[i++] = "-root-owned";
         args[i++] = "-noappend";
 
         // compression-specific optimization
-        if (sqfs_comp != NULL) {
-            if (strcmp(sqfs_comp, "xz") != 0) {
-                // https://jonathancarter.org/2015/04/06/squashfs-performance-testing/ says:
-                // improved performance by using a 16384 block size with a sacrifice of around 3% more squashfs image space
-                args[i++] = "-Xdict-size";
-                args[i++] = "100%";
-                args[i++] = "-b";
-                args[i++] = "16384";
-            } else if (strcmp(sqfs_comp, "zstd") != 0) {
-                /*
-                 * > Build with 1MiB block size
-                 * > Using a bigger block size than mksquashfs's default improves read speed and can produce smaller AppImages as well
-                 * -- https://github.com/probonopd/go-appimage/commit/c4a112e32e8c2c02d1d388c8fa45a9222a529af3
-                 */
-                args[i++] = "-b";
-                args[i++] = "1M";
-            }
+        assert(sqfs_comp != NULL);
+        if (strcmp(sqfs_comp, "xz") != 0) {
+            // https://jonathancarter.org/2015/04/06/squashfs-performance-testing/ says:
+            // improved performance by using a 16384 block size with a sacrifice of around 3% more squashfs image space
+            args[i++] = "-Xdict-size";
+            args[i++] = "100%";
+            args[i++] = "-b";
+            args[i++] = "16384";
+        } else if (strcmp(sqfs_comp, "zstd") != 0) {
+            /*
+             * > Build with 1MiB block size
+             * > Using a bigger block size than mksquashfs's default improves read speed and can produce smaller AppImages as well
+             * -- https://github.com/probonopd/go-appimage/commit/c4a112e32e8c2c02d1d388c8fa45a9222a529af3
+             */
+            args[i++] = "-b";
+            args[i++] = "1M";
         }
 
         // check if ignore file exists and use it if possible
@@ -508,7 +506,7 @@ static GOptionEntry entries[] =
     { "version", 0, 0, G_OPTION_ARG_NONE, &showVersionOnly, "Show version number", NULL },
     { "verbose", 'v', 0, G_OPTION_ARG_NONE, &verbose, "Produce verbose output", NULL },
     { "sign", 's', 0, G_OPTION_ARG_NONE, &sign, "Sign with gpg[2]", NULL },
-    { "comp", 0, 0, G_OPTION_ARG_STRING, &sqfs_comp, "Squashfs compression", NULL },
+    { "comp", 0, 0, G_OPTION_ARG_STRING, &sqfs_comp, "Squashfs compression (default: zstd", NULL },
     { "mksquashfs-opt", 0, 0, G_OPTION_ARG_STRING_ARRAY, &sqfs_opts, "Argument to pass through to mksquashfs; can be specified multiple times", NULL },
     { "no-appstream", 'n', 0, G_OPTION_ARG_NONE, &no_appstream, "Do not check AppStream metadata", NULL },
     { "exclude-file", 0, 0, G_OPTION_ARG_STRING, &exclude_file, _exclude_file_desc, NULL },
@@ -588,11 +586,6 @@ main (int argc, char *argv[])
     // always show version, but exit immediately if only the version number was requested
     if (showVersionOnly)
         exit(0);
-
-    if(sqfs_comp == NULL) {
-        fprintf(stderr, "WARNING: mksquashfs is going to use its default compression algorithm\n");
-        fprintf(stderr, "Consider passing --comp zstd for best performance\n");
-    }
 
     /* Check for dependencies here. Better fail early if they are not present. */
     if(! g_find_program_in_path ("file"))
