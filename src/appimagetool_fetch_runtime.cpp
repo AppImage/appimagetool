@@ -129,58 +129,38 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
 
     std::cerr << "Downloading runtime file from " << url << std::endl;
 
-    // first, we perform a HEAD request to determine the required buffer size to write the file to
-    // of course, this assumes that a) GitHub sends a Content-Length header and b) that it is correct and will be in
-    // the GET request, too
-    // we store the URL we are redirected to (which probably lies on some AWS and is unique to that file) for use in
-    // the GET request, which should ensure we really download the file whose size we check now
-    CurlRequest headRequest(url, RequestType::HEAD);
+    CurlRequest request(url, RequestType::GET);
 
     if (verbose) {
-        headRequest.setVerbose(true);
+        request.setVerbose(true);
     }
 
-    auto headResponse = headRequest.perform();
+    auto response = request.perform();
 
-    if (!headResponse.success()) {
+    std::cerr << "Downloaded runtime binary of size " << response.contentLength() << std::endl;
+
+    if (!response.success()) {
         return false;
     }
 
-    if (headResponse.effectiveUrl() != url) {
-        std::cerr << "Redirected to " << headResponse.effectiveUrl() << std::endl;
-    }
+    auto runtimeData = response.data();
 
-    std::cerr << "Downloading runtime binary of size " << headResponse.contentLength() << std::endl;
-
-    CurlRequest getRequest(headResponse.effectiveUrl(), RequestType::GET);
-
-    if (verbose) {
-        getRequest.setVerbose(true);
-    }
-
-    auto getResponse = getRequest.perform();
-
-    if (!getResponse.success()) {
+    if (runtimeData.size() != response.contentLength()) {
+        std::cerr << "Error: downloaded data size of " << runtimeData.size()
+                  << " does not match content-length of " << response.contentLength() << std::endl;
         return false;
     }
 
-    if (headResponse.contentLength() != getResponse.contentLength()) {
-        std::cerr << "Error: content length does not match" << std::endl;
-        return false;
-    }
+    *size = response.contentLength();
 
-    *size = getResponse.contentLength();
-
-    *buffer = (char *) calloc(getResponse.contentLength() + 1, 1);
+    *buffer = (char *) calloc(response.contentLength() + 1, 1);
 
     if (*buffer == NULL) {
         std::cerr << "Failed to allocate buffer" << std::endl;
         return false;
     }
 
-    auto data = getResponse.data();
-
-    std::copy(data.begin(), data.end(), *buffer);
+    std::copy(runtimeData.begin(), runtimeData.end(), *buffer);
 
     return true;
 }
