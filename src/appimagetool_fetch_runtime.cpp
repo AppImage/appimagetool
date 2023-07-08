@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <string>
 #include <iostream>
+#include <sstream>
 
 #include <curl/curl.h>
 #include <malloc.h>
@@ -86,16 +87,11 @@ public:
 };
 
 bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
-    // should be plenty big for the URL
-    char url[1024];
-    int url_size = snprintf(url, sizeof(url),
-                            "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-%s", arch);
-    if (url_size <= 0 || url_size >= sizeof(url)) {
-        fprintf(stderr, "Failed to generate runtime URL\n");
-        return false;
-    }
+    std::ostringstream urlstream;
+    urlstream << "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-%s" << arch;
+    auto url = urlstream.str();
 
-    fprintf(stderr, "Downloading runtime file from %s\n", url);
+    std::cerr << "Downloading runtime file from " << url << std::endl;
 
     // first, we perform a HEAD request to determine the required buffer size to write the file to
     // of course, this assumes that a) GitHub sends a Content-Length header and b) that it is correct and will be in
@@ -113,7 +109,7 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
     }
 
     if (headRequest.effectiveUrl() != url) {
-        fprintf(stderr, "Redirected to %s\n", headRequest.effectiveUrl().c_str());
+        std::cerr << "Redirected to " << headRequest.effectiveUrl() << std::endl;
     }
 
     // now that we know the required buffer size, we allocate a suitable in-memory buffer and perform the GET request
@@ -123,11 +119,11 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
     setbuf(file_buffer, NULL);
 
     if (file_buffer == NULL) {
-        fprintf(stderr, "fmemopen failed: %s\n", strerror(errno));
+        std::cerr << "fmemopen failed " << strerror(errno) << std::endl;
         return false;
     }
 
-    fprintf(stderr, "Downloading runtime binary of size %" CURL_FORMAT_CURL_OFF_T "\n", headRequest.contentLength());
+    std::cerr << "Downloading runtime binary of size " << headRequest.contentLength() << std::endl;
 
     CurlRequest getRequest(headRequest.effectiveUrl(), RequestType::GET);
 
@@ -142,7 +138,7 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
     }
 
     if (getRequest.contentLength() != headRequest.contentLength()) {
-        fprintf(stderr, "error: content length does not match");
+        std::cerr << "Error: content length does not match" << std::endl;
         return false;
     }
 
@@ -151,11 +147,11 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
     *buffer = (char *) calloc(getRequest.contentLength() + 1, 1);
 
     if (*buffer == NULL) {
-        fprintf(stderr, "Failed to allocate buffer\n");
+        std::cerr << "Failed to allocate buffer" << std::endl;
         return false;
     }
 
-    memcpy((void *) *buffer, rawBuffer.data(), rawBuffer.size());
+    std::copy(rawBuffer.begin(), rawBuffer.end(), *buffer);
 
     return true;
 }
