@@ -27,21 +27,14 @@ private:
     std::vector<char> _data;
 
 public:
-    CurlResponse(bool success, std::string effectiveUrl, curl_off_t contentLength, std::vector<char> data)
+    CurlResponse(bool success, curl_off_t contentLength, std::vector<char> data)
         : _success(success)
-        , _effectiveUrl(effectiveUrl)
         , _contentLength(contentLength)
-        , _data(data) {
-        std::cerr << "data size: " << data.size() << std::endl;
-    }
+        , _data(data) {}
 
     bool success() {
         return _success;
     }
-
-    std::string effectiveUrl() {
-        return _effectiveUrl;
-    };
 
     curl_off_t contentLength() {
         return _contentLength;
@@ -110,15 +103,10 @@ public:
     CurlResponse perform() {
         auto result = curl_easy_perform(this->_handle);
 
-        char* effectiveUrl;
-        curl_easy_getinfo(_handle, CURLINFO_EFFECTIVE_URL, &effectiveUrl);
-
         curl_off_t contentLength;
         curl_easy_getinfo(_handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &contentLength);
 
-
-
-        return {result == CURLE_OK, effectiveUrl, contentLength, _buffer};
+        return {result == CURLE_OK, contentLength, _buffer};
     }
 };
 
