@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <curl/curl.h>
 #include <malloc.h>
@@ -31,6 +32,7 @@ bool fetch_runtime(char* arch, size_t* size, char** buffer, bool verbose) {
             fprintf(stderr, "Using certificate file %s\n", getenv("SSL_CERT_FILE"));
         }
     } else {
+        curl_easy_setopt(handle, CURLOPT_CAINFO, NULL);
         const char* certFiles[] = {
         "/etc/ssl/certs/ca-certificates.crt",                // Debian/Ubuntu/Gentoo etc.
         "/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora/RHEL 6
@@ -40,9 +42,11 @@ bool fetch_runtime(char* arch, size_t* size, char** buffer, bool verbose) {
         "/etc/ssl/cert.pem",                                 // Alpine Linux
         };
         for (size_t i = 0; i < sizeof(certFiles) / sizeof(certFiles[0]); ++i) {
-            if (curl_easy_setopt(handle, CURLOPT_CAINFO, certFiles[i]) == CURLE_OK) {
-                fprintf(stderr, "Using certificate file %s\n", certFiles[i]);
-                break;
+            if (access(certFiles[i], F_OK) != -1) {
+                if (curl_easy_setopt(handle, CURLOPT_CAINFO, certFiles[i]) == CURLE_OK) {
+                    fprintf(stderr, "Using certificate file %s\n", certFiles[i]);
+                    break;
+                }
             }
         }
     }
@@ -52,6 +56,7 @@ bool fetch_runtime(char* arch, size_t* size, char** buffer, bool verbose) {
             fprintf(stderr, "Using certificate directory %s\n", getenv("SSL_CERT_DIR"));
         }
     } else {
+        curl_easy_setopt(handle, CURLOPT_CAPATH, NULL);
         const char* certDirectories[] = {
             "/etc/ssl/certs",               // SLES10/SLES11, https://golang.org/issue/12139
             "/etc/pki/tls/certs",           // Fedora/RHEL
@@ -59,9 +64,11 @@ bool fetch_runtime(char* arch, size_t* size, char** buffer, bool verbose) {
         };
 
         for (size_t i = 0; i < sizeof(certDirectories) / sizeof(certDirectories[0]); ++i) {
-            if (curl_easy_setopt(handle, CURLOPT_CAPATH, certDirectories[i]) == CURLE_OK) {
-                fprintf(stderr, "Using certificate directory %s\n", certDirectories[i]);
-                break;
+            if (access(certDirectories[i], F_OK) != -1) {
+                if (curl_easy_setopt(handle, CURLOPT_CAPATH, certDirectories[i]) == CURLE_OK) {
+                    fprintf(stderr, "Using certificate directory %s\n", certDirectories[i]);
+                    break;
+                }
             }
         }
     }
