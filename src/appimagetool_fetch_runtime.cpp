@@ -12,6 +12,7 @@
 #include "appimagetool_fetch_runtime.h"
 
 #include <vector>
+#include <cassert>
 
 enum class RequestType {
     GET,
@@ -23,9 +24,16 @@ private:
     bool _success;
     std::string _effectiveUrl;
     curl_off_t _contentLength;
+    std::vector<char> _data;
 
 public:
-    CurlResponse(bool success, std::string effectiveUrl, curl_off_t contentLength) : _success(success), _effectiveUrl(effectiveUrl), _contentLength(contentLength) {}
+    CurlResponse(bool success, std::string effectiveUrl, curl_off_t contentLength, std::vector<char> data)
+        : _success(success)
+        , _effectiveUrl(effectiveUrl)
+        , _contentLength(contentLength)
+        , _data(data) {
+        std::cerr << "data size: " << data.size() << std::endl;
+    }
 
     bool success() {
         return _success;
@@ -38,11 +46,22 @@ public:
     curl_off_t contentLength() {
         return _contentLength;
     }
+
+    std::vector<char> data() {
+        return _data;
+    }
 };
 
 class CurlRequest {
 private:
     CURL* _handle;
+    std::vector<char> _buffer;
+
+    static size_t writeStuff(char* data, size_t size, size_t nmemb, void* this_ptr) {
+        const auto bytes = size * nmemb;
+        std::copy(data, data + bytes, std::back_inserter(static_cast<CurlRequest*>(this_ptr)->_buffer));
+        return bytes;
+    }
 
 public:
     CurlRequest(std::string url, RequestType requestType) {
@@ -67,6 +86,9 @@ public:
         // default parameters
         curl_easy_setopt(_handle, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(_handle, CURLOPT_MAXREDIRS, 12L);
+
+        curl_easy_setopt(_handle, CURLOPT_WRITEFUNCTION, CurlRequest::writeStuff);
+        curl_easy_setopt(_handle, CURLOPT_WRITEDATA, static_cast<void*>(this));
 
         // curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, curl_error_buf);
     }
@@ -94,12 +116,9 @@ public:
         curl_off_t contentLength;
         curl_easy_getinfo(_handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &contentLength);
 
-        return {result == CURLE_OK, effectiveUrl, contentLength};
-    }
 
-    void setFileBuffer(FILE* fileBuffer) {
-        curl_easy_setopt(_handle, CURLOPT_WRITEDATA, (void*) fileBuffer);
-//        curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, (void*) fileBuffer);
+
+        return {result == CURLE_OK, effectiveUrl, contentLength, _buffer};
     }
 };
 
@@ -131,17 +150,6 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
         std::cerr << "Redirected to " << headResponse.effectiveUrl() << std::endl;
     }
 
-    // now that we know the required buffer size, we allocate a suitable in-memory buffer and perform the GET request
-    // we allocate our own so that we don't have to use fread(...) to get the data
-    std::vector<char> rawBuffer(headResponse.contentLength());
-    FILE *file_buffer = fmemopen(rawBuffer.data(), rawBuffer.size(), "w+b");
-    setbuf(file_buffer, NULL);
-
-    if (file_buffer == NULL) {
-        std::cerr << "fmemopen failed " << strerror(errno) << std::endl;
-        return false;
-    }
-
     std::cerr << "Downloading runtime binary of size " << headResponse.contentLength() << std::endl;
 
     CurlRequest getRequest(headResponse.effectiveUrl(), RequestType::GET);
@@ -149,8 +157,6 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
     if (verbose) {
         getRequest.setVerbose(true);
     }
-
-    getRequest.setFileBuffer(file_buffer);
 
     auto getResponse = getRequest.perform();
 
@@ -172,7 +178,9 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
         return false;
     }
 
-    std::copy(rawBuffer.begin(), rawBuffer.end(), *buffer);
+    auto data = getResponse.data();
+
+    std::copy(data.begin(), data.end(), *buffer);
 
     return true;
 }
