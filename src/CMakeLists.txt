@@ -1,7 +1,7 @@
 add_executable(appimagetool
     appimagetool.c
     appimagetool_sign.c
-    appimagetool_fetch_runtime.c
+    appimagetool_fetch_runtime.cpp
     hexlify.c
     elf.c
     digest.c
