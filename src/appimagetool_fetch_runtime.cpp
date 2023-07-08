@@ -103,11 +103,6 @@ public:
         checkForCurlError(curl_easy_setopt(this->_handle, CURLOPT_VERBOSE, verbose ? 1L : 0L));
     }
 
-    void setInsecure(bool insecure) {
-        std::cerr << "Warning: insecure request, please be careful!" << std::endl;
-        checkForCurlError(curl_easy_setopt(this->_handle, CURLOPT_SSL_VERIFYPEER, insecure ? 0L : 1L));
-    }
-
     CurlResponse perform() {
         auto result = curl_easy_perform(this->_handle);
 
