@@ -880,6 +880,9 @@ main (int argc, char *argv[])
         if (verbose)
             printf("Size of the embedded runtime: %d bytes\n", size);
         
+        if (verbose)
+            printf("Destination: %s\n", destination);
+
         int result = sfs_mksquashfs(source, destination, size);
         if(result != 0)
             die("sfs_mksquashfs error");
