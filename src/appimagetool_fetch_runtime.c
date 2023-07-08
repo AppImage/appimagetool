@@ -103,7 +103,6 @@ bool fetch_runtime(char* arch, size_t* size, char** buffer, bool verbose) {
     // the GET request, too
     // we store the URL we are redirected to (which probably lies on some AWS and is unique to that file) for use in
     // the GET request, which should ensure we really download the file whose size we check now
-    handle = curl_easy_init();
     
     if (handle == NULL) {
         fprintf(stderr, "Failed to initialize libcurl\n");
@@ -151,9 +150,6 @@ bool fetch_runtime(char* arch, size_t* size, char** buffer, bool verbose) {
         fprintf(stderr, "HEAD request to %s failed: %s\n", url, curl_error_buf);
     }
 
-    curl_easy_cleanup(handle);
-    handle = NULL;
-
     if (success != CURLE_OK || strlen(effective_url) == 0 || content_length <= 0) {
         curl_global_cleanup();
         return false;
@@ -170,8 +166,6 @@ bool fetch_runtime(char* arch, size_t* size, char** buffer, bool verbose) {
         curl_global_cleanup();
         return false;
     }
-
-    handle = curl_easy_init();
 
     if (handle == NULL) {
         fprintf(stderr, "Failed to initialize libcurl\n");
