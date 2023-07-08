@@ -1,7 +1,3 @@
-// need to define this to enable asprintf
-#include <cstdio>
-#include <cstring>
-#include <cerrno>
 #include <string>
 #include <iostream>
 #include <sstream>
@@ -11,8 +7,8 @@
 
 #include "appimagetool_fetch_runtime.h"
 
+#include <utility>
 #include <vector>
-#include <cassert>
 
 enum class RequestType {
     GET,
@@ -30,7 +26,7 @@ public:
     CurlResponse(bool success, curl_off_t contentLength, std::vector<char> data)
         : _success(success)
         , _contentLength(contentLength)
-        , _data(data) {}
+        , _data(std::move(data)) {}
 
     bool success() {
         return _success;
@@ -69,7 +65,7 @@ private:
     }
 
 public:
-    CurlRequest(std::string url, RequestType requestType) : _errorBuffer(CURL_ERROR_SIZE) {
+    CurlRequest(const std::string& url, RequestType requestType) : _errorBuffer(CURL_ERROR_SIZE) {
         // not the cleanest approach to globally init curl here, but this method shouldn't be called more than once anyway
         curl_global_init(CURL_GLOBAL_ALL);
 
@@ -155,7 +151,7 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
 
     *buffer = (char *) calloc(response.contentLength() + 1, 1);
 
-    if (*buffer == NULL) {
+    if (*buffer == nullptr) {
         std::cerr << "Failed to allocate buffer" << std::endl;
         return false;
     }
