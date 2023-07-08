@@ -45,10 +45,16 @@ public:
     }
 };
 
+class CurlException : public std::runtime_error {
+public:
+    CurlException(CURLcode code, const std::string& errorMessage) : std::runtime_error(std::string(curl_easy_strerror(code)) + ": " + errorMessage) {}
+};
+
 class CurlRequest {
 private:
     CURL* _handle;
     std::vector<char> _buffer;
+    std::vector<char> _errorBuffer;
 
     static size_t writeStuff(char* data, size_t size, size_t nmemb, void* this_ptr) {
         const auto bytes = size * nmemb;
@@ -56,8 +62,14 @@ private:
         return bytes;
     }
 
+    void checkForCurlError(CURLcode code) {
+        if (code != CURLE_OK) {
+            throw CurlException(code, _errorBuffer.data());
+        }
+    }
+
 public:
-    CurlRequest(std::string url, RequestType requestType) {
+    CurlRequest(std::string url, RequestType requestType) : _errorBuffer(CURL_ERROR_SIZE) {
         // not the cleanest approach to globally init curl here, but this method shouldn't be called more than once anyway
         curl_global_init(CURL_GLOBAL_ALL);
 
@@ -66,24 +78,24 @@ public:
             throw std::runtime_error("Failed to initialize libcurl\n");
         }
 
-        curl_easy_setopt(this->_handle, CURLOPT_URL, url.c_str());
+        checkForCurlError(curl_easy_setopt(this->_handle, CURLOPT_URL, url.c_str()));
 
         switch (requestType) {
             case RequestType::GET:
                 break;
             case RequestType::HEAD:
-                curl_easy_setopt(this->_handle, CURLOPT_NOBODY, 1L);
+                checkForCurlError(curl_easy_setopt(this->_handle, CURLOPT_NOBODY, 1L));
                 break;
         }
 
         // default parameters
-        curl_easy_setopt(_handle, CURLOPT_FOLLOWLOCATION, 1L);
-        curl_easy_setopt(_handle, CURLOPT_MAXREDIRS, 12L);
+        checkForCurlError(curl_easy_setopt(_handle, CURLOPT_FOLLOWLOCATION, 1L));
+        checkForCurlError(curl_easy_setopt(_handle, CURLOPT_MAXREDIRS, 12L));
 
-        curl_easy_setopt(_handle, CURLOPT_WRITEFUNCTION, CurlRequest::writeStuff);
-        curl_easy_setopt(_handle, CURLOPT_WRITEDATA, static_cast<void*>(this));
+        checkForCurlError(curl_easy_setopt(_handle, CURLOPT_WRITEFUNCTION, CurlRequest::writeStuff));
+        checkForCurlError(curl_easy_setopt(_handle, CURLOPT_WRITEDATA, static_cast<void*>(this)));
 
-        // curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, curl_error_buf);
+        checkForCurlError(curl_easy_setopt(_handle, CURLOPT_ERRORBUFFER, _errorBuffer.data()));
     }
 
     ~CurlRequest() {
@@ -92,19 +104,19 @@ public:
     }
 
     void setVerbose(bool verbose) {
-        curl_easy_setopt(this->_handle, CURLOPT_VERBOSE, verbose ? 1L : 0L);
+        checkForCurlError(curl_easy_setopt(this->_handle, CURLOPT_VERBOSE, verbose ? 1L : 0L));
     }
 
     void setInsecure(bool insecure) {
         std::cerr << "Warning: insecure request, please be careful!" << std::endl;
-        curl_easy_setopt(this->_handle, CURLOPT_SSL_VERIFYPEER, insecure ? 0L : 1L);
+        checkForCurlError(curl_easy_setopt(this->_handle, CURLOPT_SSL_VERIFYPEER, insecure ? 0L : 1L));
     }
 
     CurlResponse perform() {
         auto result = curl_easy_perform(this->_handle);
 
         curl_off_t contentLength;
-        curl_easy_getinfo(_handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &contentLength);
+        checkForCurlError(curl_easy_getinfo(_handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &contentLength));
 
         return {result == CURLE_OK, contentLength, _buffer};
     }
