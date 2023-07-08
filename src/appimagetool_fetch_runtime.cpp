@@ -1,14 +1,12 @@
 #include <string>
 #include <iostream>
 #include <sstream>
-
-#include <curl/curl.h>
-#include <malloc.h>
-
-#include "appimagetool_fetch_runtime.h"
-
 #include <utility>
 #include <vector>
+
+#include <curl/curl.h>
+
+#include "appimagetool_fetch_runtime.h"
 
 class CurlResponse {
 private:
@@ -23,15 +21,15 @@ public:
         , _contentLength(contentLength)
         , _data(std::move(data)) {}
 
-    bool success() {
+    [[nodiscard]] bool success() const {
         return _success;
     }
 
-    curl_off_t contentLength() {
+    [[nodiscard]] curl_off_t contentLength() const {
         return _contentLength;
     }
 
-    std::vector<char> data() {
+    [[nodiscard]] const std::vector<char>& data() const {
         return _data;
     }
 };
@@ -60,7 +58,7 @@ private:
     }
 
 public:
-    GetRequest(const std::string& url) : _errorBuffer(CURL_ERROR_SIZE) {
+    explicit GetRequest(const std::string& url) : _errorBuffer(CURL_ERROR_SIZE) {
         // not the cleanest approach to globally init curl here, but this method shouldn't be called more than once anyway
         curl_global_init(CURL_GLOBAL_ALL);
 
