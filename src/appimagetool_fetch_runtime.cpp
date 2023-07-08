@@ -18,6 +18,28 @@ enum class RequestType {
     HEAD,
 };
 
+class CurlResponse {
+private:
+    bool _success;
+    std::string _effectiveUrl;
+    curl_off_t _contentLength;
+
+public:
+    CurlResponse(bool success, std::string effectiveUrl, curl_off_t contentLength) : _success(success), _effectiveUrl(effectiveUrl), _contentLength(contentLength) {}
+
+    bool success() {
+        return _success;
+    }
+
+    std::string effectiveUrl() {
+        return _effectiveUrl;
+    };
+
+    curl_off_t contentLength() {
+        return _contentLength;
+    }
+};
+
 class CurlRequest {
 private:
     CURL* _handle;
@@ -63,21 +85,16 @@ public:
         curl_easy_setopt(this->_handle, CURLOPT_SSL_VERIFYPEER, insecure ? 0L : 1L);
     }
 
-    std::string effectiveUrl() {
-        char* temp;
-        curl_easy_getinfo(_handle, CURLINFO_EFFECTIVE_URL, &temp);
-        return temp;
-    }
+    CurlResponse perform() {
+        auto result = curl_easy_perform(this->_handle);
 
-    curl_off_t contentLength() {
+        char* effectiveUrl;
+        curl_easy_getinfo(_handle, CURLINFO_EFFECTIVE_URL, &effectiveUrl);
+
         curl_off_t contentLength;
         curl_easy_getinfo(_handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &contentLength);
-        return contentLength;
-    }
 
-    bool perform() {
-        auto result = curl_easy_perform(this->_handle);
-        return result == CURLE_OK;
+        return {result == CURLE_OK, effectiveUrl, contentLength};
     }
 
     void setFileBuffer(FILE* fileBuffer) {
@@ -88,7 +105,7 @@ public:
 
 bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
     std::ostringstream urlstream;
-    urlstream << "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-%s" << arch;
+    urlstream << "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-" << arch;
     auto url = urlstream.str();
 
     std::cerr << "Downloading runtime file from " << url << std::endl;
@@ -104,17 +121,19 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
         headRequest.setVerbose(true);
     }
 
-    if (!headRequest.perform()) {
+    auto headResponse = headRequest.perform();
+
+    if (!headResponse.success()) {
         return false;
     }
 
-    if (headRequest.effectiveUrl() != url) {
-        std::cerr << "Redirected to " << headRequest.effectiveUrl() << std::endl;
+    if (headResponse.effectiveUrl() != url) {
+        std::cerr << "Redirected to " << headResponse.effectiveUrl() << std::endl;
     }
 
     // now that we know the required buffer size, we allocate a suitable in-memory buffer and perform the GET request
     // we allocate our own so that we don't have to use fread(...) to get the data
-    std::vector<char> rawBuffer(headRequest.contentLength());
+    std::vector<char> rawBuffer(headResponse.contentLength());
     FILE *file_buffer = fmemopen(rawBuffer.data(), rawBuffer.size(), "w+b");
     setbuf(file_buffer, NULL);
 
@@ -123,9 +142,9 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
         return false;
     }
 
-    std::cerr << "Downloading runtime binary of size " << headRequest.contentLength() << std::endl;
+    std::cerr << "Downloading runtime binary of size " << headResponse.contentLength() << std::endl;
 
-    CurlRequest getRequest(headRequest.effectiveUrl(), RequestType::GET);
+    CurlRequest getRequest(headResponse.effectiveUrl(), RequestType::GET);
 
     if (verbose) {
         getRequest.setVerbose(true);
@@ -133,18 +152,20 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
 
     getRequest.setFileBuffer(file_buffer);
 
-    if (!getRequest.perform()) {
+    auto getResponse = getRequest.perform();
+
+    if (!getResponse.success()) {
         return false;
     }
 
-    if (getRequest.contentLength() != headRequest.contentLength()) {
+    if (headResponse.contentLength() != getResponse.contentLength()) {
         std::cerr << "Error: content length does not match" << std::endl;
         return false;
     }
 
-    *size = getRequest.contentLength();
+    *size = getResponse.contentLength();
 
-    *buffer = (char *) calloc(getRequest.contentLength() + 1, 1);
+    *buffer = (char *) calloc(getResponse.contentLength() + 1, 1);
 
     if (*buffer == NULL) {
         std::cerr << "Failed to allocate buffer" << std::endl;
