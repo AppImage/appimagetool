@@ -42,6 +42,7 @@ Some of the parameters above can alternatively be specified as environment varia
 - `APPIMAGETOOL_FORCE_SIGN`: By default, if signing fails, appimagetool just logs a warning but will not abort immediately. If this environment variable is set, appimagetool exits with a non-zero return code.
 - `APPIMAGETOOL_SIGN_PASSPHRASE`: If the `--sign-key` is encrypted and requires a passphrase to be used for signing (and, for some reason, GnuPG cannot be used interactively, e.g., in a CI environment), this environment variable can be used to safely pass the key.
 - `VERSION`: This value will be inserted by appimagetool into the root desktop file and (if the destination parameter is not provided by the user) in the output filename.
+- `APPIMAGETOOL_FETCH_RUNTIME_INSECURE`: If set, CA certificates will not be used when downloading the runtime. 
 - `SSL_CERT_FILE`: If set, CA certificates will be looked up in this file when downloading the runtime.
 - `SSL_CERT_DIR`: If set, CA certificates will be looked up in this directory when downloading the runtime.
 

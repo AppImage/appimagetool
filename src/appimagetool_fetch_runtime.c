@@ -23,51 +23,57 @@ bool fetch_runtime(char* arch, size_t* size, char** buffer, bool verbose) {
         return false;
     }
 
-    // use SSL_CERT_FILE and/or SSL_CERT_DIR if set, otherwise check for common locations
-    // https://curl.haxx.se/docs/sslcerts.html
-    // https://gitlab.com/probono/platformissues#certificates
-    // https://go.dev/src/crypto/x509/root_linux.go
-    if (getenv("SSL_CERT_FILE") != NULL) {
-        if (curl_easy_setopt(handle, CURLOPT_CAINFO, getenv("SSL_CERT_FILE")) == CURLE_OK) {
-            fprintf(stderr, "Using certificate file %s\n", getenv("SSL_CERT_FILE"));
-        }
+    if (getenv("APPIMAGETOOL_FETCH_RUNTIME_INSECURE") != NULL) {
+        curl_easy_setopt(handle, CURLOPT_SSL_VERIFYPEER, 0L);
     } else {
-        curl_easy_setopt(handle, CURLOPT_CAINFO, NULL);
-        const char* certFiles[] = {
-        "/etc/ssl/certs/ca-certificates.crt",                // Debian/Ubuntu/Gentoo etc.
-        "/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora/RHEL 6
-        "/etc/ssl/ca-bundle.pem",                            // OpenSUSE
-        "/etc/pki/tls/cacert.pem",                           // OpenELEC
-        "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", // CentOS/RHEL 7
-        "/etc/ssl/cert.pem",                                 // Alpine Linux
-        };
-        for (size_t i = 0; i < sizeof(certFiles) / sizeof(certFiles[0]); ++i) {
-            if (access(certFiles[i], F_OK) != -1) {
-                if (curl_easy_setopt(handle, CURLOPT_CAINFO, certFiles[i]) == CURLE_OK) {
-                    fprintf(stderr, "Using certificate file %s\n", certFiles[i]);
-                    break;
+        curl_easy_setopt(handle, CURLOPT_SSL_VERIFYPEER, 1L);
+
+        // use SSL_CERT_FILE and/or SSL_CERT_DIR if set, otherwise check for common locations
+        // https://curl.haxx.se/docs/sslcerts.html
+        // https://gitlab.com/probono/platformissues#certificates
+        // https://go.dev/src/crypto/x509/root_linux.go
+        if (getenv("SSL_CERT_FILE") != NULL) {
+            if (curl_easy_setopt(handle, CURLOPT_CAINFO, getenv("SSL_CERT_FILE")) == CURLE_OK) {
+                fprintf(stderr, "Using certificate file %s\n", getenv("SSL_CERT_FILE"));
+            }
+        } else {
+            curl_easy_setopt(handle, CURLOPT_CAINFO, NULL);
+            const char* certFiles[] = {
+            "/etc/ssl/certs/ca-certificates.crt",                // Debian/Ubuntu/Gentoo etc.
+            "/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora/RHEL 6
+            "/etc/ssl/ca-bundle.pem",                            // OpenSUSE
+            "/etc/pki/tls/cacert.pem",                           // OpenELEC
+            "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", // CentOS/RHEL 7
+            "/etc/ssl/cert.pem",                                 // Alpine Linux
+            };
+            for (size_t i = 0; i < sizeof(certFiles) / sizeof(certFiles[0]); ++i) {
+                if (access(certFiles[i], F_OK) != -1) {
+                    if (curl_easy_setopt(handle, CURLOPT_CAINFO, certFiles[i]) == CURLE_OK) {
+                        fprintf(stderr, "Using certificate file %s\n", certFiles[i]);
+                        break;
+                    }
                 }
             }
         }
-    }
 
-    if (getenv("SSL_CERT_DIR") != NULL) {
-        if (curl_easy_setopt(handle, CURLOPT_CAPATH, getenv("SSL_CERT_DIR")) == CURLE_OK) {
-            fprintf(stderr, "Using certificate directory %s\n", getenv("SSL_CERT_DIR"));
-        }
-    } else {
-        curl_easy_setopt(handle, CURLOPT_CAPATH, NULL);
-        const char* certDirectories[] = {
-            "/etc/ssl/certs",               // SLES10/SLES11, https://golang.org/issue/12139
-            "/etc/pki/tls/certs",           // Fedora/RHEL
-            "/system/etc/security/cacerts", // Android
-        };
+        if (getenv("SSL_CERT_DIR") != NULL) {
+            if (curl_easy_setopt(handle, CURLOPT_CAPATH, getenv("SSL_CERT_DIR")) == CURLE_OK) {
+                fprintf(stderr, "Using certificate directory %s\n", getenv("SSL_CERT_DIR"));
+            }
+        } else {
+            curl_easy_setopt(handle, CURLOPT_CAPATH, NULL);
+            const char* certDirectories[] = {
+                "/etc/ssl/certs",               // SLES10/SLES11, https://golang.org/issue/12139
+                "/etc/pki/tls/certs",           // Fedora/RHEL
+                "/system/etc/security/cacerts", // Android
+            };
 
-        for (size_t i = 0; i < sizeof(certDirectories) / sizeof(certDirectories[0]); ++i) {
-            if (access(certDirectories[i], F_OK) != -1) {
-                if (curl_easy_setopt(handle, CURLOPT_CAPATH, certDirectories[i]) == CURLE_OK) {
-                    fprintf(stderr, "Using certificate directory %s\n", certDirectories[i]);
-                    break;
+            for (size_t i = 0; i < sizeof(certDirectories) / sizeof(certDirectories[0]); ++i) {
+                if (access(certDirectories[i], F_OK) != -1) {
+                    if (curl_easy_setopt(handle, CURLOPT_CAPATH, certDirectories[i]) == CURLE_OK) {
+                        fprintf(stderr, "Using certificate directory %s\n", certDirectories[i]);
+                        break;
+                    }
                 }
             }
         }
