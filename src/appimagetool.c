@@ -135,23 +135,25 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
         args[i++] = "-offset";
         args[i++] = offset_string;
 
-        if (sqfs_comp != NULL) {
+        if (sqfs_comp == NULL) {
             sqfs_comp = "zstd";
         }
+
+        args[i++] = "-comp";
+        args[i++] = sqfs_comp;
 
         args[i++] = "-root-owned";
         args[i++] = "-noappend";
 
         // compression-specific optimization
-        assert(sqfs_comp != NULL);
-        if (strcmp(sqfs_comp, "xz") != 0) {
+        if (strcmp(sqfs_comp, "xz") == 0) {
             // https://jonathancarter.org/2015/04/06/squashfs-performance-testing/ says:
             // improved performance by using a 16384 block size with a sacrifice of around 3% more squashfs image space
             args[i++] = "-Xdict-size";
             args[i++] = "100%";
             args[i++] = "-b";
             args[i++] = "16384";
-        } else if (strcmp(sqfs_comp, "zstd") != 0) {
+        } else if (strcmp(sqfs_comp, "zstd") == 0) {
             /*
              * > Build with 1MiB block size
              * > Using a bigger block size than mksquashfs's default improves read speed and can produce smaller AppImages as well
