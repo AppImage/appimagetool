@@ -27,8 +27,7 @@ bool fetch_runtime(char* arch, size_t* size, char** buffer, bool verbose) {
 
     char curl_error_buf[CURL_ERROR_SIZE];
     CURL* handle = NULL;
-    // should also be plenty big for the redirect target
-    char effective_url[sizeof(url)];
+    char* effective_url;
     int success = -1L;
 
     curl_off_t content_length = -1;
@@ -59,16 +58,8 @@ bool fetch_runtime(char* arch, size_t* size, char** buffer, bool verbose) {
     success = curl_easy_perform(handle);
 
     if (success == CURLE_OK) {
-        // we want to clean up the handle before we can use effective_url
-        char* temp;
-        if (curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &temp) == CURLE_OK) {
-            strncpy(effective_url, temp, sizeof(effective_url) - 1);
-            // just a little sanity check
-            if (strlen(effective_url) != strlen(temp)) {
-                fprintf(stderr, "Failed to copy effective URL\n");
-                // delegate cleanup
-                effective_url[0] = '\0';
-            } else if (strcmp(url, effective_url) != 0) {
+        if (curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &effective_url) == CURLE_OK) {
+            if (strcmp(url, effective_url) != 0) {
                 fprintf(stderr, "Redirected to %s\n", effective_url);
             }
         } else {
@@ -89,7 +80,7 @@ bool fetch_runtime(char* arch, size_t* size, char** buffer, bool verbose) {
     curl_easy_cleanup(handle);
     handle = NULL;
 
-    if (success != CURLE_OK || strlen(effective_url) == 0 || content_length <= 0) {
+    if (success != CURLE_OK || effective_url == NULL || content_length <= 0) {
         curl_global_cleanup();
         return false;
     }
