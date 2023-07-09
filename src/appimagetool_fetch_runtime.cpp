@@ -3,6 +3,9 @@
 #include <sstream>
 #include <utility>
 #include <vector>
+#include <array>
+#include <filesystem>
+#include <algorithm>
 
 #include <curl/curl.h>
 
@@ -33,6 +36,54 @@ public:
         return _data;
     }
 };
+
+std::string findCaBundleFile() {
+    constexpr std::array locations = {
+        // Debian/Ubuntu/Gentoo etc.
+        "/etc/ssl/certs/ca-certificates.crt",
+        // Fedora/RHEL 6
+        "/etc/pki/tls/certs/ca-bundle.crt",
+        // OpenSUSE
+        "/etc/ssl/ca-bundle.pem",
+        // OpenELEC
+        "/etc/pki/tls/cacert.pem",
+        // CentOS/RHEL 7
+        "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+        // Alpine Linux
+        "/etc/ssl/cert.pem",
+    };
+
+    auto found = std::find_if(locations.begin(), locations.end(), [](const auto& path) {
+        return std::filesystem::is_regular_file(path) || std::filesystem::is_symlink(path);
+    });
+
+    if (found != locations.end()) {
+        return *found;
+    }
+
+    return {};
+}
+
+std::string findCaBundleDirectory() {
+    constexpr std::array locations = {
+        // SLES10/SLES11, https://golang.org/issue/12139
+        "/etc/ssl/certs",
+        // Fedora/RHEL
+        "/etc/pki/tls/certs",
+        // Android
+        "/system/etc/security/cacerts",
+    };
+
+    auto found = std::find_if(locations.begin(), locations.end(), [](const auto& path) {
+        return std::filesystem::is_directory(path);
+    });
+
+    if (found != locations.end()) {
+        return *found;
+    }
+
+    return {};
+}
 
 class CurlException : public std::runtime_error {
 public:
@@ -82,6 +133,35 @@ private:
         checkForCurlError(curl_easy_setopt(_handle, option, value));
     }
 
+    void setUpTlsCaChainCompatibility() {
+        // from curl 7.84.0 on, one can query the default values and check if these files or directories exist
+        // if not, we anyway run the detection
+#define querying_supported LIBCURL_VERSION_NUM >= CURL_VERSION_BITS(7, 84, 0)
+#if querying_supported
+        if (std::filesystem::exists(getOption<char*>(CURLINFO_CAINFO))) {
+            return;
+        }
+
+        if (std::filesystem::is_directory(getOption<char*>(CURLINFO_CAPATH))) {
+            return;
+        }
+#endif
+
+        const auto chainFile = findCaBundleFile();
+        if (!chainFile.empty()) {
+            setOption(CURLOPT_CAINFO, chainFile.c_str());
+            return;
+        }
+
+        const auto chainDir = findCaBundleDirectory();
+        if (!chainDir.empty()) {
+            setOption(CURLOPT_CAINFO, chainDir.c_str());
+            return;
+        }
+
+        std::cerr << "Warning: could not find valid CA chain bundle, HTTPS requests will likely fail" << std::endl;
+    }
+
 public:
     explicit GetRequest(const std::string& url) : _errorBuffer(CURL_ERROR_SIZE) {
         // not the cleanest approach to globally init curl here, but this method shouldn't be called more than once anyway
@@ -97,6 +177,9 @@ public:
         // default parameters
         setOption(CURLOPT_FOLLOWLOCATION, 1L);
         setOption(CURLOPT_MAXREDIRS, 12L);
+
+        // support TLS CA chains on various distributions
+        setUpTlsCaChainCompatibility();
 
         // needed to handle request internally
         setOption(CURLOPT_WRITEFUNCTION, GetRequest::writeStuff);
