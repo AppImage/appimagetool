@@ -32,6 +32,7 @@
 
 #include <stdlib.h>
 
+// TODO: Remove glib dependency in favor of C++
 #include <glib.h>
 #include <gio/gio.h>
 #include <glib/gstdio.h>
@@ -77,15 +78,15 @@ typedef enum {
 static gchar const APPIMAGEIGNORE[] = ".appimageignore";
 static char _exclude_file_desc[256];
 
-static gboolean list = FALSE;
-static gboolean verbose = FALSE;
-static gboolean showVersionOnly = FALSE;
-static gboolean sign = FALSE;
-static gboolean no_appstream = FALSE;
+static bool list = false;
+static bool verbose = false;
+static bool showVersionOnly = false;
+static bool sign = false;
+static bool no_appstream = false;
 gchar **remaining_args = NULL;
 gchar *updateinformation = NULL;
-static gboolean guess_update_information = FALSE;
-gchar *sqfs_comp = NULL;
+static bool guess_update_information = false;
+std::string sqfs_comp = "zstd";
 gchar **sqfs_opts = NULL;
 gchar *exclude_file = NULL;
 gchar *runtime_file = NULL;
@@ -95,7 +96,7 @@ gchar *pathToMksquashfs = NULL;
 // #####################################################################
 
 static void die(const char *msg) {
-    fprintf(stderr, "%s\n", msg);
+    std::cerr << msg << std::endl;
     exit(1);
 }
 
@@ -118,17 +119,16 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
         
         int retcode = WEXITSTATUS(status);
         if (retcode) {
-            fprintf(stderr, "mksquashfs (pid %d) exited with code %d\n", pid, retcode);
+            std::cerr << "mksquashfs (pid " << pid << ") exited with code " << retcode << std::endl;
             return(-1);
         }
         
         return 0;
     } else {
         // we are the child
-        gchar* offset_string;
-        offset_string = g_strdup_printf("%i", offset);
+        std::string offset_string = std::to_string(offset);
 
-        guint sqfs_opts_len = sqfs_opts ? g_strv_length(sqfs_opts) : 0;
+        unsigned int sqfs_opts_len = sqfs_opts ? g_strv_length(sqfs_opts) : 0;
 
         int max_num_args = sqfs_opts_len + 22;
         std::vector<std::string> args;
@@ -145,10 +145,6 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
 
             int i = args.size();
 
-        if (sqfs_comp == NULL) {
-            sqfs_comp = "zstd";
-        }
-
         args.push_back("-comp");
         args.push_back(sqfs_comp);
 
@@ -156,14 +152,14 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
         args.push_back("-noappend");
 
         // compression-specific optimization
-        if (strcmp(sqfs_comp, "xz") == 0) {
+        if (sqfs_comp == "xz") {
             // https://jonathancarter.org/2015/04/06/squashfs-performance-testing/ says:
             // improved performance by using a 16384 block size with a sacrifice of around 3% more squashfs image space
             args.push_back("-Xdict-size");
             args.push_back("100%");
             args.push_back("-b");
             args.push_back("16384");
-        } else if (strcmp(sqfs_comp, "zstd") == 0) {
+        } else if (sqfs_comp == "zstd") {
             /*
              * > Build with 1MiB block size
              * > Using a bigger block size than mksquashfs's default improves read speed and can produce smaller AppImages as well
@@ -200,7 +196,7 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
         args.push_back("-mkfs-time");
         args.push_back("0");
 
-        for (guint sqfs_opts_idx = 0; sqfs_opts_idx < sqfs_opts_len; ++sqfs_opts_idx) {
+        for (unsigned int sqfs_opts_idx = 0; sqfs_opts_idx < sqfs_opts_len; ++sqfs_opts_idx) {
             args[i++] = sqfs_opts[sqfs_opts_idx];
         }
                     // Build the command string
@@ -322,25 +318,25 @@ void extract_arch_from_e_machine_field(int16_t e_machine, const gchar* sourcenam
     if (e_machine == 3) {
         archs[fARCH_i686] = 1;
         if(verbose)
-            fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(fARCH_i686));
+            std::cout << sourcename << " used for determining architecture " << archToName(fARCH_i686) << std::endl;
     }
 
     if (e_machine == 62) {
         archs[fARCH_x86_64] = 1;
         if(verbose)
-            fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(fARCH_x86_64));
+            std::cout << sourcename << " used for determining architecture " << archToName(fARCH_x86_64) << std::endl;
     }
 
     if (e_machine == 40) {
         archs[fARCH_armhf] = 1;
         if(verbose)
-            fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(fARCH_armhf));
+            std::cout << sourcename << " used for determining architecture " << archToName(fARCH_armhf) << std::endl;
     }
 
     if (e_machine == 183) {
         archs[fARCH_aarch64] = 1;
         if(verbose)
-            fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(fARCH_aarch64));
+            std::cout << sourcename << " used for determining architecture " << archToName(fARCH_aarch64) << std::endl;
     }
 }
 
@@ -361,19 +357,19 @@ void extract_arch_from_text(gchar *archname, const gchar* sourcename, bool* arch
                     ) {
                 archs[fARCH_i686] = 1;
                 if (verbose)
-                    fprintf(stderr, "%s used for determining architecture i386\n", sourcename);
+                    std::cout << sourcename << " used for determining architecture i386" << std::endl;
             } else if (g_ascii_strncasecmp("x86_64", archname, 20) == 0) {
                 archs[fARCH_x86_64] = 1;
                 if (verbose)
-                    fprintf(stderr, "%s used for determining architecture x86_64\n", sourcename);
+                    std::cout << sourcename << " used for determining architecture x86_64" << std::endl;
             } else if (g_ascii_strncasecmp("arm", archname, 20) == 0) {
                 archs[fARCH_armhf] = 1;
                 if (verbose)
-                    fprintf(stderr, "%s used for determining architecture ARM\n", sourcename);
+                    std::cout << sourcename << " used for determining architecture ARM" << std::endl;
             } else if (g_ascii_strncasecmp("arm_aarch64", archname, 20) == 0) {
                 archs[fARCH_aarch64] = 1;
                 if (verbose)
-                    fprintf(stderr, "%s used for determining architecture ARM aarch64\n", sourcename);
+                    std::cerr << sourcename << " used for determining architecture ARM aarch64\n";
             }
         }
     }
@@ -443,7 +439,7 @@ gchar* find_first_matching_file_nonrecursive(const gchar *real_path, const gchar
 gchar* get_desktop_entry(GKeyFile *kf, char *key) {
     gchar *value = g_key_file_get_string (kf, "Desktop Entry", key, NULL);
     if (! value){
-        fprintf(stderr, "%s entry not found in desktop file\n", key);
+        std::cout << key << " entry not found in desktop file" << std::endl;
     }
     return value;
 }
@@ -535,26 +531,47 @@ main (int argc, char *argv[])
      * We cannot use g_environ_getenv (g_get_environ() since it is too new for CentOS 6 */
     // char* travis_commit;
     // travis_commit = getenv("TRAVIS_COMMIT");
-    char* travis_repo_slug;
-    travis_repo_slug = getenv("TRAVIS_REPO_SLUG");
-    char* travis_tag;
-    travis_tag = getenv("TRAVIS_TAG");
-    char* travis_pull_request;
-    travis_pull_request = getenv("TRAVIS_PULL_REQUEST");
+    std::string travis_repo_slug;
+    char* travis_repo_slug_cstr = getenv("TRAVIS_REPO_SLUG");
+    if (travis_repo_slug_cstr != NULL) {
+        travis_repo_slug = std::string(travis_repo_slug_cstr);
+    }
+    std::string travis_tag;
+    char* travis_tag_cstr = getenv("TRAVIS_TAG");
+    if (travis_tag_cstr != NULL) {
+        travis_tag = std::string(travis_tag_cstr);
+    }
+    std::string travis_pull_request;
+    char* travis_pull_request_cstr = getenv("TRAVIS_PULL_REQUEST");
+    if (travis_pull_request_cstr != NULL) {
+        travis_pull_request = std::string(travis_pull_request_cstr);
+    }
     /* https://github.com/probonopd/uploadtool */
-    char* github_token;
-    github_token = getenv("GITHUB_TOKEN");
+    std::string github_token;
+    char* github_token_cstr = getenv("GITHUB_TOKEN");
+    if (github_token_cstr != NULL) {
+        github_token = std::string(github_token_cstr);
+    }
 
     /* Parse GitLab CI environment variables.
      * https://docs.gitlab.com/ee/ci/variables/#predefined-variables-environment-variables
      * echo "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_REF_NAME}/raw/QtQuickApp-x86_64.AppImage?job=${CI_JOB_NAME}"
      */    
-    char* CI_PROJECT_URL;
-    CI_PROJECT_URL = getenv("CI_PROJECT_URL");
-    char* CI_COMMIT_REF_NAME;
-    CI_COMMIT_REF_NAME = getenv("CI_COMMIT_REF_NAME"); // The branch or tag name for which project is built
-    char* CI_JOB_NAME;
-    CI_JOB_NAME = getenv("CI_JOB_NAME"); // The name of the job as defined in .gitlab-ci.yml
+    std::string CI_PROJECT_URL;
+    char* CI_PROJECT_URL_cstr = getenv("CI_PROJECT_URL");
+    if (CI_PROJECT_URL_cstr != NULL) {
+        CI_PROJECT_URL = std::string(CI_PROJECT_URL_cstr);
+    }
+    std::string CI_COMMIT_REF_NAME;
+    char* CI_COMMIT_REF_NAME_cstr = getenv("CI_COMMIT_REF_NAME");
+    if (CI_COMMIT_REF_NAME_cstr != NULL) {
+        CI_COMMIT_REF_NAME = std::string(CI_COMMIT_REF_NAME_cstr);
+    }
+    std::string CI_JOB_NAME;
+    char* CI_JOB_NAME_cstr = getenv("CI_JOB_NAME");
+    if (CI_JOB_NAME_cstr != NULL) {
+        CI_JOB_NAME = std::string(CI_JOB_NAME_cstr);
+    }
     
     /* Parse OWD environment variable.
      * If it is available then cd there. It is the original CWD prior to running AppRun */
@@ -564,7 +581,7 @@ main (int argc, char *argv[])
         int ret;
         ret = chdir(owd_env);
         if (ret != 0){
-            fprintf(stderr, "Could not cd into %s\n", owd_env);
+            std::cerr << "Could not cd into " << owd_env << std::endl;
             exit(1);
         }
     }
@@ -580,15 +597,11 @@ main (int argc, char *argv[])
     // g_option_context_add_group (context, gtk_get_option_group (TRUE));
     if (!g_option_context_parse (context, &argc, &argv, &error))
     {
-        fprintf(stderr, "Option parsing failed: %s\n", error->message);
+        std::cerr << "Option parsing failed: " << error->message << std::endl;
         exit(1);
     }
 
-    fprintf(
-        stderr,
-        "appimagetool, %s (git version %s), build %s built on %s\n",
-        RELEASE_NAME, GIT_VERSION, BUILD_NUMBER, BUILD_DATE
-    );
+    std::cerr << "appimagetool, " << RELEASE_NAME << " (git version " << GIT_VERSION << "), build " << BUILD_NUMBER << " built on " << BUILD_DATE << std::endl;
 
     // always show version, but exit immediately if only the version number was requested
     if (showVersionOnly)
@@ -664,17 +677,17 @@ main (int argc, char *argv[])
                     // g_spawn_command_line_sync might have set error already, in that case we don't want to overwrite
                     if (error != NULL || !g_spawn_check_exit_status(exit_status, &error)) {
                         if (error == NULL) {
-                            g_printerr("Failed to run 'git rev-parse --short HEAD, but failed to interpret GLib error state: %d\n", exit_status);
+                            std::cerr << "Failed to run 'git rev-parse --short HEAD, but failed to interpret GLib error state: " << exit_status << std::endl;
                         } else {
-                            g_printerr("Failed to run 'git rev-parse --short HEAD: %s (code %d)\n", error->message, error->code);
+                            std::cerr << "Failed to run 'git rev-parse --short HEAD: " << error->message << " (code " << error->code << ")" << std::endl;
                         }
                     } else {
                         version_env = g_strstrip(out);
 
                         if (version_env != NULL) {
-                            g_printerr("NOTE: Using the output of 'git rev-parse --short HEAD' as the version:\n");
-                            g_printerr("      %s\n", version_env);
-                            g_printerr("      Please set the $VERSION environment variable if this is not intended\n");
+                            std::cerr << "NOTE: Using the output of 'git rev-parse --short HEAD' as the version:" << std::endl;
+                            std::cerr << "      " << version_env << std::endl;
+                            std::cerr << "      Please set the $VERSION environment variable if this is not intended" << std::endl;
                         }
                     }
                 }
@@ -693,12 +706,12 @@ main (int argc, char *argv[])
             die("Desktop file not found, aborting");
         }
         if(verbose)
-            fprintf (stdout, "Desktop file: %s\n", desktop_file);
+            std::cout << "Desktop file: " << desktop_file << std::endl;
 
         if(g_find_program_in_path ("desktop-file-validate")) {
             if(validate_desktop_file(desktop_file) != 0){
-                fprintf(stderr, "ERROR: Desktop file contains errors. Please fix them. Please see\n");
-                fprintf(stderr, "       https://standards.freedesktop.org/desktop-entry-spec/1.0/n");
+                std::cerr << "ERROR: Desktop file contains errors. Please fix them. Please see" << std::endl;
+                std::cerr << "       https://standards.freedesktop.org/desktop-entry-spec/1.0/n" << std::endl;
                 die("       for more information.");
             }
         }
@@ -711,12 +724,12 @@ main (int argc, char *argv[])
         if (!get_desktop_entry(kf, "Categories"))
             die(".desktop file is missing a Categories= key");
         if(verbose){
-            fprintf (stderr,"Name: %s\n", get_desktop_entry(kf, "Name"));
-            fprintf (stderr,"Icon: %s\n", get_desktop_entry(kf, "Icon"));
-            fprintf (stderr,"Exec: %s\n", get_desktop_entry(kf, "Exec"));
-            fprintf (stderr,"Comment: %s\n", get_desktop_entry(kf, "Comment"));
-            fprintf (stderr,"Type: %s\n", get_desktop_entry(kf, "Type"));
-            fprintf (stderr,"Categories: %s\n", get_desktop_entry(kf, "Categories"));
+            std::cerr << "Name: " << get_desktop_entry(kf, "Name") << std::endl;
+            std::cerr << "Icon: " << get_desktop_entry(kf, "Icon") << std::endl;
+            std::cerr << "Exec: " << get_desktop_entry(kf, "Exec") << std::endl;
+            std::cerr << "Comment: " << get_desktop_entry(kf, "Comment") << std::endl;
+            std::cerr << "Type: " << get_desktop_entry(kf, "Type") << std::endl;
+            std::cerr << "Categories: " << get_desktop_entry(kf, "Categories") << std::endl;
         }
 
         /* Determine the architecture */
@@ -729,21 +742,21 @@ main (int argc, char *argv[])
             int countArchs = count_archs(archs);
             if (countArchs != 1) {
                 if (countArchs < 1)
-                    fprintf(stderr, "Unable to guess the architecture of the AppDir source directory \"%s\"\n", remaining_args[0]);
+                    std::cerr << "Unable to guess the architecture of the AppDir source directory \"" << remaining_args[0] << "\"" << std::endl;
                 else
-                    fprintf(stderr, "More than one architectures were found of the AppDir source directory \"%s\"\n", remaining_args[0]);
-                fprintf(stderr, "A valid architecture with the ARCH environmental variable should be provided\ne.g. ARCH=x86_64 %s", argv[0]),
+                    std::cerr << "More than one architectures were found of the AppDir source directory \"" << remaining_args[0] << "\"" << std::endl;
+                std::cerr << "A valid architecture with the ARCH environmental variable should be provided\ne.g. ARCH=x86_64 " << argv[0] << std::endl;
                         die(" ...");
             }
         }
         gchar* arch = getArchName(archs);
-        fprintf(stderr, "Using architecture %s\n", arch);
+        std::cerr << "Using architecture " << arch << std::endl;
 
         char app_name_for_filename[PATH_MAX];
         {
             const char* const env_app_name = getenv("APPIMAGETOOL_APP_NAME");
             if (env_app_name != NULL) {
-                fprintf(stderr, "Using user-specified app name: %s\n", env_app_name);
+                std::cerr << "Using user-specified app name: " << env_app_name << std::endl;
                 strncpy(app_name_for_filename, env_app_name, PATH_MAX);
             } else {
                 const gchar* const desktop_file_app_name = get_desktop_entry(kf, "Name");
@@ -751,7 +764,7 @@ main (int argc, char *argv[])
                 replacestr(app_name_for_filename, " ", "_");
 
                 if (verbose) {
-                    fprintf(stderr, "Using app name extracted from desktop file: %s\n", app_name_for_filename);
+                    std::cerr << "Using app name extracted from desktop file: " << app_name_for_filename << std::endl;
                 }
             }
         }
@@ -779,12 +792,12 @@ main (int argc, char *argv[])
             g_key_file_set_string(kf, G_KEY_FILE_DESKTOP_GROUP, "X-AppImage-Version", version_env);
 
             if (!g_key_file_save_to_file(kf, desktop_file, NULL)) {
-                fprintf(stderr, "Could not save modified desktop file\n");
+                std::cerr << "Could not save modified desktop file" << std::endl;
                 exit(1);
             }
         }
 
-        fprintf (stdout, "%s should be packaged as %s\n", source, destination);
+        std::cout << source << " should be packaged as " << destination << std::endl;
         /* Check if the Icon file is how it is expected */
         gchar* icon_name = get_desktop_entry(kf, "Icon");
         gchar* icon_file_path = NULL;
@@ -801,11 +814,11 @@ main (int argc, char *argv[])
         } else if(g_file_test(icon_file_xpm, G_FILE_TEST_IS_REGULAR)) {
             icon_file_path = icon_file_xpm;
         } else {
-            fprintf (stderr, "%s{.png,.svg,.xpm} defined in desktop file but not found\n", icon_name);
-            fprintf (stderr, "For example, you could put a 256x256 pixel png into\n");
+            std::cerr << icon_name << "{.png,.svg,.xpm} defined in desktop file but not found" << std::endl;
+            std::cerr << "For example, you could put a 256x256 pixel png into" << std::endl;
             gchar *icon_name_with_png = g_strconcat(icon_name, ".png", NULL);
             gchar *example_path = g_build_filename(source, "/", icon_name_with_png, NULL);
-            fprintf (stderr, "%s\n", example_path);
+            std::cerr << example_path << std::endl;
             exit(1);
         }
        
@@ -813,11 +826,11 @@ main (int argc, char *argv[])
         gchar *diricon_path = g_build_filename(source, ".DirIcon", NULL);
         
         if (! g_file_test(diricon_path, G_FILE_TEST_EXISTS)){
-            fprintf (stderr, "Deleting pre-existing .DirIcon\n");
+            std::cerr << "Deleting pre-existing .DirIcon" << std::endl;
             g_unlink(diricon_path);
         }
         if (! g_file_test(diricon_path, G_FILE_TEST_IS_REGULAR)){
-            fprintf (stderr, "Creating .DirIcon symlink based on information from desktop file\n");
+            std::cerr << "Creating .DirIcon symlink based on information from desktop file" << std::endl;
             int res = symlink(basename(icon_file_path), diricon_path);
             if(res)
                 die("Could not symlink .DirIcon");
@@ -830,12 +843,12 @@ main (int argc, char *argv[])
             replacestr(application_id, ".desktop", ".appdata.xml");
             gchar *appdata_path = g_build_filename(source, "/usr/share/metainfo/", application_id, NULL);
             if (! g_file_test(appdata_path, G_FILE_TEST_IS_REGULAR)){
-                fprintf (stderr, "WARNING: AppStream upstream metadata is missing, please consider creating it\n");
-                fprintf (stderr, "         in usr/share/metainfo/%s\n", application_id);
-                fprintf (stderr, "         Please see https://www.freedesktop.org/software/appstream/docs/chap-Quickstart.html#sect-Quickstart-DesktopApps\n");
-                fprintf (stderr, "         for more information or use the generator at http://output.jsbin.com/qoqukof.\n");
-            } else {
-                fprintf (stderr, "AppStream upstream metadata found in usr/share/metainfo/%s\n", application_id);
+                    std::cerr << "WARNING: AppStream upstream metadata is missing, please consider creating it" << std::endl;
+                    std::cerr << "         in usr/share/metainfo/" << application_id << std::endl;
+                    std::cerr << "         Please see https://www.freedesktop.org/software/appstream/docs/chap-Quickstart.html#sect-Quickstart-DesktopApps" << std::endl;
+                    std::cerr << "         for more information or use the generator at http://output.jsbin.com/qoqukof." << std::endl;
+                } else {
+                    std::cerr << "AppStream upstream metadata found in usr/share/metainfo/" << application_id << std::endl;
                 /* Use ximion's appstreamcli to make sure that desktop file and appdata match together */
                 if(g_find_program_in_path ("appstreamcli")) {
                     char *args[] = {
@@ -871,7 +884,7 @@ main (int argc, char *argv[])
         * so we need a patched one. https://github.com/plougher/squashfs-tools/pull/13
         * should hopefully change that. */
 
-        fprintf (stderr, "Loading runtime file...\n");
+        std::cerr << "Loading runtime file..." << std::endl;
         size_t size = 0;
         char* data = NULL;
         // TODO: just write to the output file directly, we don't really need a memory buffer
@@ -885,14 +898,14 @@ main (int argc, char *argv[])
             }
         }
         if (verbose)
-            printf("Size of the embedded runtime: %d bytes\n", size);
-        
-        fprintf (stderr, "Generating squashfs...\n");
+                std::cout << "Size of the embedded runtime: " << size << " bytes" << std::endl;
+            
+            std::cerr << "Generating squashfs..." << std::endl;
         int result = sfs_mksquashfs(source, destination, size);
         if(result != 0)
             die("sfs_mksquashfs error");
         
-        fprintf (stderr, "Embedding ELF...\n");
+        std::cerr << "Embedding ELF..." << std::endl;
         FILE *fpdst = fopen(destination, "rb+");
         if (fpdst == NULL) {
             die("Not able to open the AppImage for writing, aborting");
@@ -904,19 +917,21 @@ main (int argc, char *argv[])
         // TODO: avoid memory buffer (see above)
         free(data);
 
-        fprintf (stderr, "Marking the AppImage as executable...\n");
+        std::cerr << "Marking the AppImage as executable..." << std::endl;
         if (chmod (destination, 0755) < 0) {
-            printf("Could not set executable bit, aborting\n");
+            std::cout << "Could not set executable bit, aborting" << std::endl;
             exit(1);
         }
+
+        std::string update_info;
         
         /* If the user has not provided update information but we know this is a Travis CI build,
          * then fill in update information based on TRAVIS_REPO_SLUG */
         if(guess_update_information){
-            if(travis_repo_slug){
-                if(!github_token) {
+            if (!travis_repo_slug.empty()) {
+                if(github_token.empty()) {
                     printf("Will not guess update information since $GITHUB_TOKEN is missing,\n");
-                    if(0 != strcmp(travis_pull_request, "false")){
+                    if(travis_pull_request != "false"){
                         printf("please set it in the Travis CI Repository Settings for this project.\n");
                         printf("You can get one from https://github.com/settings/tokens\n");
                     } else {
@@ -926,52 +941,58 @@ main (int argc, char *argv[])
                     gchar *zsyncmake_path = g_find_program_in_path ("zsyncmake");
                     if(zsyncmake_path){
                         char buf[1024];
-                        gchar **parts = g_strsplit (travis_repo_slug, "/", 2);
+                        std::string delimiter = "/";
+                        std::string owner = travis_repo_slug.substr(0, travis_repo_slug.find(delimiter));
+                        std::string repo = travis_repo_slug.substr(travis_repo_slug.find(delimiter) + 1);
                         /* https://github.com/AppImage/AppImageSpec/blob/master/draft.md#github-releases 
                          * gh-releases-zsync|probono|AppImages|latest|Subsurface*-x86_64.AppImage.zsync */
                         gchar *channel = "continuous";
-                            if(travis_tag != NULL){
-                                if((strcmp(travis_tag, "") != 0) && (strcmp(travis_tag, "continuous") != 0)) {
-                                    channel = "latest";
-                                }
+                            if ((!travis_tag.empty()) && (travis_tag != "continuous")) {
+                                channel = "latest";
                             }
-                        sprintf(buf, "gh-releases-zsync|%s|%s|%s|%s*-%s.AppImage.zsync", parts[0], parts[1], channel, app_name_for_filename, arch);
+                        std::ostringstream oss;
+                        oss << "gh-releases-zsync|" << owner << "|" << repo << "|" << channel << "|" << app_name_for_filename << "*-" << arch << ".AppImage.zsync";
+                        update_info = oss.str();
                         updateinformation = buf;
-                        printf("Guessing update information based on $TRAVIS_TAG=%s and $TRAVIS_REPO_SLUG=%s\n", travis_tag, travis_repo_slug);
-                        printf("%s\n", updateinformation);
+                        std::cout << "Guessing update information based on $TRAVIS_TAG=" << travis_tag << " and $TRAVIS_REPO_SLUG=" << travis_repo_slug << std::endl;
+                        std::cout << updateinformation << std::endl;
                     } else {
                         printf("Will not guess update information since zsyncmake is missing\n");
                     }
                 }
-            } else if(CI_COMMIT_REF_NAME){
+            } else if(! CI_COMMIT_REF_NAME.empty()){
                 // ${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_REF_NAME}/raw/QtQuickApp-x86_64.AppImage?job=${CI_JOB_NAME}
                 gchar *zsyncmake_path = g_find_program_in_path ("zsyncmake");
-                if(zsyncmake_path){
-                    char buf[1024];
-                    sprintf(buf, "zsync|%s/-/jobs/artifacts/%s/raw/%s-%s.AppImage.zsync?job=%s", CI_PROJECT_URL, CI_COMMIT_REF_NAME, app_name_for_filename, arch, CI_JOB_NAME);
-                    updateinformation = buf;
-                    printf("Guessing update information based on $CI_COMMIT_REF_NAME=%s and $CI_JOB_NAME=%s\n", CI_COMMIT_REF_NAME, CI_JOB_NAME);
-                    printf("%s\n", updateinformation);
+                if (zsyncmake_path) {
+                    update_info = "zsync|" + CI_PROJECT_URL + "/-/jobs/artifacts/" + CI_COMMIT_REF_NAME + "/raw/" + app_name_for_filename + "-" + arch + ".AppImage.zsync?job=" + CI_JOB_NAME;
+                    std::cout << "Guessing update information based on $CI_COMMIT_REF_NAME=" << CI_COMMIT_REF_NAME << " and $CI_JOB_NAME=" << CI_JOB_NAME << std::endl;
+                    std::cout << update_info << std::endl;
                 } else {
-                    printf("Will not guess update information since zsyncmake is missing\n");
+                    std::cout << "Will not guess update information since zsyncmake is missing\n";
                 }
             }
         }
         
         /* If updateinformation was provided, then we check and embed it */
-        if(updateinformation != NULL){
-            if(!g_str_has_prefix(updateinformation,"zsync|"))
-                if(!g_str_has_prefix(updateinformation,"gh-releases-zsync|"))
-                    if(!g_str_has_prefix(updateinformation,"pling-v1-zsync|"))
-                        die("The provided updateinformation is not in a recognized format");
+        if(!update_info.empty()){
+            if(update_info.find("zsync|") != 0)
+                if(update_info.find("gh-releases-zsync|") != 0)
+                    if(update_info.find("pling-v1-zsync|") != 0)
+                        die("The provided update information is not in a recognized format");
                 
-            gchar **ui_type = g_strsplit_set(updateinformation, "|", -1);
+            std::string ui_type;
+            for (int i = 0; i < update_info.length(); i++) {
+                if (update_info[i] == '|') {
+                    break;
+                }
+                ui_type += update_info[i];
+            }
                         
-            if(verbose)
-                printf("updateinformation type: %s\n", ui_type[0]);
+            if(verbose) {
+                std::cout << "updateinformation type: " << ui_type << std::endl;
+            }
             /* TODO: Further checking of the updateinformation */
-            
-          
+                      
             unsigned long ui_offset = 0;
             unsigned long ui_length = 0;
 
@@ -982,8 +1003,8 @@ main (int argc, char *argv[])
             }
 
             if(verbose) {
-                printf("ui_offset: %lu\n", ui_offset);
-                printf("ui_length: %lu\n", ui_length);
+                std::cout << "ui_offset: " << ui_offset << std::endl;
+                std::cout << "ui_length: " << ui_length << std::endl;
             }
             if(ui_offset == 0) {
                 die("Could not determine offset for updateinformation");
@@ -1004,7 +1025,7 @@ main (int argc, char *argv[])
 
         // calculate and embed MD5 digest
         {
-            fprintf(stderr, "Embedding MD5 digest\n");
+            std::cerr << "Embedding MD5 digest" << std::endl;
 
             unsigned long digest_md5_offset = 0;
             unsigned long digest_md5_length = 0;
@@ -1018,12 +1039,8 @@ main (int argc, char *argv[])
             static const unsigned long section_size = 16;
 
             if (digest_md5_length < section_size) {
-                fprintf(
-                    stderr,
-                    ".digest_md5 section in runtime's ELF header is too small"
-                    "(found %lu bytes, minimum required: %lu bytes)\n",
-                    digest_md5_length, section_size
-                );
+                std::cerr << ".digest_md5 section in runtime's ELF header is too small"
+                          << "(found " << digest_md5_length << " bytes, minimum required: " << section_size << " bytes)" << std::endl;
                 exit(1);
             }
 
@@ -1062,19 +1079,19 @@ main (int argc, char *argv[])
         if (updateinformation != NULL) {
             gchar* zsyncmake_path = g_find_program_in_path("zsyncmake");
             if (!zsyncmake_path) {
-                fprintf(stderr, "zsyncmake is not installed/bundled, skipping\n");
+                std::cerr << "zsyncmake is not installed/bundled, skipping\n";
             } else {
-                fprintf(stderr, "zsyncmake is available and updateinformation is provided, "
-                                "hence generating zsync file\n");
+                std::cerr << "zsyncmake is available and updateinformation is provided, "
+                                "hence generating zsync file\n";
 
                 const gchar* const zsyncmake_command[] = {zsyncmake_path, destination, "-u", basename(destination), NULL};
 
                 if (verbose) {
-                    fprintf(stderr, "Running zsyncmake process: ");
+                    std::cerr << "Running zsyncmake process: ";
                     for (gint j = 0; j < (sizeof(zsyncmake_command) / sizeof(char*) - 1); ++j) {
-                        fprintf(stderr, "'%s' ", zsyncmake_command[j]);
+                        std::cerr << "'" << zsyncmake_command[j] << "' ";
                     }
-                    fprintf(stderr, "\n");
+                    std::cerr << "\n";
                 }
 
                 GSubprocessFlags flags = G_SUBPROCESS_FLAGS_NONE;
@@ -1086,12 +1103,12 @@ main (int argc, char *argv[])
                 GSubprocess* proc = g_subprocess_newv(zsyncmake_command, flags, &error);
 
                 if (proc == NULL) {
-                    fprintf(stderr, "ERROR: failed to create zsyncmake process: %s\n", error->message);
+                    std::cerr << "ERROR: failed to create zsyncmake process: " << error->message << "\n";
                     exit(1);
                 }
 
                 if (!g_subprocess_wait_check(proc, NULL, &error)) {
-                    fprintf(stderr, "ERROR: zsyncmake returned abnormal exit code: %s\n", error->message);
+                    std::cerr << "ERROR: zsyncmake returned abnormal exit code: " << error->message << "\n";
                     g_object_unref(proc);
                     exit(1);
                 }
@@ -1100,19 +1117,17 @@ main (int argc, char *argv[])
             }
         }
 
-        fprintf(stderr, "Success\n\n");
-        fprintf(stderr, "Please consider submitting your AppImage to AppImageHub, the crowd-sourced\n");
-        fprintf(stderr, "central directory of available AppImages, by opening a pull request\n");
-        fprintf(stderr, "at https://github.com/AppImage/appimage.github.io\n");
-
-        return 0;
-    } else if (g_file_test(remaining_args[0], G_FILE_TEST_IS_REGULAR)) {
-        /* If the first argument is a regular file, then we assume that we should unpack it */
-        fprintf(stdout, "%s is a file, assuming it is an AppImage and should be unpacked\n", remaining_args[0]);
-        die("To be implemented");
-        return 1;
+        std::string absolute_path = std::string(realpath(destination, NULL));
+        if (!absolute_path.empty()) {
+            std::cerr << "Success: " << absolute_path << std::endl;
+            std::cerr << "Please consider submitting your AppImage to AppImageHub, the crowd-sourced\n";
+            std::cerr << "central directory of available AppImages, by opening a pull request\n";
+            std::cerr << "at https://github.com/AppImage/appimage.github.io\n";
+            return 0;
+        }
+        
     } else {
-        fprintf(stderr, "Error: no such file or directory: %s\n", remaining_args[0]);
+        std::cerr << "Error: no such file or directory: " << remaining_args[0] << "\n";
         return 1;
     }
 
