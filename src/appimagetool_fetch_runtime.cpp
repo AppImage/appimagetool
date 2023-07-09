@@ -105,38 +105,43 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
 
     std::cerr << "Downloading runtime file from " << url << std::endl;
 
-    GetRequest request(url);
+    try {
+        GetRequest request(url);
 
-    if (verbose) {
-        request.setVerbose(true);
-    }
+        if (verbose) {
+            request.setVerbose(true);
+        }
 
-    auto response = request.perform();
+        auto response = request.perform();
 
-    std::cerr << "Downloaded runtime binary of size " << response.contentLength() << std::endl;
+        std::cerr << "Downloaded runtime binary of size " << response.contentLength() << std::endl;
 
-    if (!response.success()) {
+        if (!response.success()) {
+            return false;
+        }
+
+        auto runtimeData = response.data();
+
+        if (runtimeData.size() != response.contentLength()) {
+            std::cerr << "Error: downloaded data size of " << runtimeData.size()
+                      << " does not match content-length of " << response.contentLength() << std::endl;
+            return false;
+        }
+
+        *size = response.contentLength();
+
+        *buffer = (char *) calloc(response.contentLength() + 1, 1);
+
+        if (*buffer == nullptr) {
+            std::cerr << "Failed to allocate buffer" << std::endl;
+            return false;
+        }
+
+        std::copy(runtimeData.begin(), runtimeData.end(), *buffer);
+
+        return true;
+    } catch (const CurlException& e) {
+        std::cerr << "libcurl error: " << e.what() << std::endl;
         return false;
     }
-
-    auto runtimeData = response.data();
-
-    if (runtimeData.size() != response.contentLength()) {
-        std::cerr << "Error: downloaded data size of " << runtimeData.size()
-                  << " does not match content-length of " << response.contentLength() << std::endl;
-        return false;
-    }
-
-    *size = response.contentLength();
-
-    *buffer = (char *) calloc(response.contentLength() + 1, 1);
-
-    if (*buffer == nullptr) {
-        std::cerr << "Failed to allocate buffer" << std::endl;
-        return false;
-    }
-
-    std::copy(runtimeData.begin(), runtimeData.end(), *buffer);
-
-    return true;
 }
