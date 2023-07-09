@@ -41,7 +41,7 @@ cp "$(which mksquashfs)" AppDir/usr/bin
 cp "$repo_root"/resources/AppRun.sh AppDir/AppRun
 chmod +x AppDir/AppRun
 
-wget https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-"$ARCH"
+# wget https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-"$ARCH"
 
 pushd AppDir
 ln -s usr/share/applications/appimagetool.desktop .
@@ -52,6 +52,7 @@ popd
 find AppDir
 cat AppDir/appimagetool.desktop
 
-AppDir/AppRun --runtime-file runtime-"$ARCH" AppDir
+# AppDir/AppRun --runtime-file runtime-"$ARCH" AppDir --verbose
+AppDir/AppRun AppDir --verbose
 
 mv appimagetool-*.AppImage "$old_cwd"

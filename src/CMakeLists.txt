@@ -1,12 +1,22 @@
 add_executable(appimagetool
-    appimagetool.c
+    appimagetool.cpp
+    appimagetool_fetch_runtime.cpp
+    appimagetool_fetch_runtime.h
     appimagetool_sign.c
-    appimagetool_fetch_runtime.c
-    hexlify.c
-    elf.c
+    appimagetool_sign.h
     digest.c
+    elf.c
+    hexlify.c
+    light_byteswap.h
+    light_elf.h
     md5.c
+    md5.h
+    util.h
 )
+
+# Ensure that the C compiler, not the C++ compiler, is used for compiling C files
+set_source_files_properties(digest.c elf.c hexlify.c md5.c appimagetool_sign.c PROPERTIES LANGUAGE C)
+set(CMAKE_C_COMPILER gcc)
 
 # trick: list libraries on which imported static ones depend on in the PUBLIC section
 # CMake then adds them after the PRIVATE ones in the linker command
@@ -18,6 +28,7 @@ target_link_libraries(appimagetool
     PkgConfig::libgpgme
     PkgConfig::libcurl
 )
+
 
 target_compile_definitions(appimagetool
     PRIVATE -D_FILE_OFFSET_BITS=64
@@ -49,3 +60,4 @@ install(
     FILES "${PROJECT_SOURCE_DIR}/resources/appimagetool.appdata.xml"
     DESTINATION share/metainfo
 )
+
