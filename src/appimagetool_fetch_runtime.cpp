@@ -57,6 +57,31 @@ private:
         }
     }
 
+    /**
+     * Query data from CURL* handle.
+     * @tparam T name of the type curl_easy_getinfo will return for the given option
+     * @param option option to query
+     * @return value returned by libcurl
+     */
+    template<typename T>
+    T getOption(CURLINFO option) {
+        T temp;
+        checkForCurlError(curl_easy_getinfo(_handle, option, &temp));
+        return temp;
+    }
+
+    /**
+     * Set options within CURL* handle.
+     * @tparam T name of the input variable's type (usually deduced automatically, you do not have to pass this
+     *     explicitly)
+     * @param option option to set using curl_easy_setinfo
+     * @param value value to set
+     */
+    template<typename T>
+    void setOption(CURLoption option, T value) {
+        checkForCurlError(curl_easy_setopt(_handle, option, value));
+    }
+
 public:
     explicit GetRequest(const std::string& url) : _errorBuffer(CURL_ERROR_SIZE) {
         // not the cleanest approach to globally init curl here, but this method shouldn't be called more than once anyway
@@ -67,16 +92,16 @@ public:
             throw std::runtime_error("Failed to initialize libcurl");
         }
 
-        checkForCurlError(curl_easy_setopt(this->_handle, CURLOPT_URL, url.c_str()));
+        setOption(CURLOPT_URL, url.c_str());
 
         // default parameters
-        checkForCurlError(curl_easy_setopt(_handle, CURLOPT_FOLLOWLOCATION, 1L));
-        checkForCurlError(curl_easy_setopt(_handle, CURLOPT_MAXREDIRS, 12L));
+        setOption(CURLOPT_FOLLOWLOCATION, 1L);
+        setOption(CURLOPT_MAXREDIRS, 12L);
 
-        checkForCurlError(curl_easy_setopt(_handle, CURLOPT_WRITEFUNCTION, GetRequest::writeStuff));
-        checkForCurlError(curl_easy_setopt(_handle, CURLOPT_WRITEDATA, static_cast<void*>(this)));
-
-        checkForCurlError(curl_easy_setopt(_handle, CURLOPT_ERRORBUFFER, _errorBuffer.data()));
+        // needed to handle request internally
+        setOption(CURLOPT_WRITEFUNCTION, GetRequest::writeStuff);
+        setOption(CURLOPT_WRITEDATA, static_cast<void*>(this));
+        setOption(CURLOPT_ERRORBUFFER, _errorBuffer.data());
     }
 
     GetRequest(const GetRequest&) = delete;
@@ -88,16 +113,12 @@ public:
     }
 
     void setVerbose(bool verbose) {
-        checkForCurlError(curl_easy_setopt(this->_handle, CURLOPT_VERBOSE, verbose ? 1L : 0L));
+        setOption(CURLOPT_VERBOSE, verbose ? 1L : 0L);
     }
 
     CurlResponse perform() {
         auto result = curl_easy_perform(this->_handle);
-
-        curl_off_t contentLength;
-        checkForCurlError(curl_easy_getinfo(_handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &contentLength));
-
-        return {result == CURLE_OK, contentLength, _buffer};
+        return {result == CURLE_OK, getOption<curl_off_t>(CURLINFO_CONTENT_LENGTH_DOWNLOAD_T), _buffer};
     }
 };
 
