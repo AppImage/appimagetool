@@ -1,4 +1,10 @@
-#pragma once
+#ifndef APPIMAGETOOL_SIGN_H
+#define APPIMAGETOOL_SIGN_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 bool sign_appimage(char* appimage_filename, char* key_id, bool verbose);
 
@@ -25,3 +31,9 @@ void gpg_release_resources();
  * @return true on success, false otherwise
  */
 bool init_gcrypt();
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* APPIMAGETOOL_SIGN_H */

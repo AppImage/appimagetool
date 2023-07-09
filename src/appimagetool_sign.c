@@ -1,3 +1,7 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
@@ -471,3 +475,6 @@ bool init_gcrypt() {
     return true;
 }
 
+#ifdef __cplusplus
+}
+#endif

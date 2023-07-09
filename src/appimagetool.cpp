@@ -34,6 +34,7 @@
 
 #include <glib.h>
 #include <gio/gio.h>
+#include <glib/gstdio.h>
 
 #include <stdio.h>
 #include <argp.h>
@@ -57,6 +58,14 @@
 
 #include "appimagetool_fetch_runtime.h"
 #include "appimagetool_sign.h"
+#include "elf.h"
+
+// C++
+#include <cstdlib>
+#include <vector>
+#include <iostream>
+#include <sstream>
+#include <string>
 
 typedef enum {
     fARCH_i686,
@@ -122,56 +131,57 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
         guint sqfs_opts_len = sqfs_opts ? g_strv_length(sqfs_opts) : 0;
 
         int max_num_args = sqfs_opts_len + 22;
-        char* args[max_num_args];
+        std::vector<std::string> args;
 
-        int i = 0;
-#ifndef AUXILIARY_FILES_DESTINATION
-        args[i++] = "mksquashfs";
-#else
-        args[i++] = pathToMksquashfs;
-#endif
-        args[i++] = source;
-        args[i++] = destination;
-        args[i++] = "-offset";
-        args[i++] = offset_string;
+        #ifndef AUXILIARY_FILES_DESTINATION
+            args.push_back("mksquashfs");
+        #else
+            args.push_back(pathToMksquashfs);
+        #endif
+            args.push_back(source);
+            args.push_back(destination);
+            args.push_back("-offset");
+            args.push_back(offset_string);
+
+            int i = args.size();
 
         if (sqfs_comp == NULL) {
             sqfs_comp = "zstd";
         }
 
-        args[i++] = "-comp";
-        args[i++] = sqfs_comp;
+        args.push_back("-comp");
+        args.push_back(sqfs_comp);
 
-        args[i++] = "-root-owned";
-        args[i++] = "-noappend";
+        args.push_back("-root-owned");
+        args.push_back("-noappend");
 
         // compression-specific optimization
         if (strcmp(sqfs_comp, "xz") == 0) {
             // https://jonathancarter.org/2015/04/06/squashfs-performance-testing/ says:
             // improved performance by using a 16384 block size with a sacrifice of around 3% more squashfs image space
-            args[i++] = "-Xdict-size";
-            args[i++] = "100%";
-            args[i++] = "-b";
-            args[i++] = "16384";
+            args.push_back("-Xdict-size");
+            args.push_back("100%");
+            args.push_back("-b");
+            args.push_back("16384");
         } else if (strcmp(sqfs_comp, "zstd") == 0) {
             /*
              * > Build with 1MiB block size
              * > Using a bigger block size than mksquashfs's default improves read speed and can produce smaller AppImages as well
              * -- https://github.com/probonopd/go-appimage/commit/c4a112e32e8c2c02d1d388c8fa45a9222a529af3
              */
-            args[i++] = "-b";
-            args[i++] = "1M";
+            args.push_back("-b");
+            args.push_back("1M");
         }
 
         // check if ignore file exists and use it if possible
         if (access(APPIMAGEIGNORE, F_OK) >= 0) {
             printf("Including %s", APPIMAGEIGNORE);
-            args[i++] = "-wildcards";
-            args[i++] = "-ef";
+            args.push_back("-wildcards");
+            args.push_back("-ef");
 
             // avoid warning: assignment discards ‘const’ qualifier
             char* buf = strdup(APPIMAGEIGNORE);
-            args[i++] = buf;
+            args.push_back(buf);
         }
 
         // if an exclude file has been passed on the command line, should be used, too
@@ -181,39 +191,34 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
                 return -1;
             }
 
-            args[i++] = "-wildcards";
-            args[i++] = "-ef";
-            args[i++] = exclude_file;
+            args.push_back("-wildcards");
+            args.push_back("-ef");
+            args.push_back(exclude_file);
+
         }
 
-        args[i++] = "-mkfs-time";
-        args[i++] = "0";
+        args.push_back("-mkfs-time");
+        args.push_back("0");
 
         for (guint sqfs_opts_idx = 0; sqfs_opts_idx < sqfs_opts_len; ++sqfs_opts_idx) {
             args[i++] = sqfs_opts[sqfs_opts_idx];
         }
-
-        args[i++] = 0;
-
-        if (verbose) {
-            printf("mksquashfs commandline: ");
-            for (char** t = args; *t != 0; t++) {
-                printf("%s ", *t);
+                    // Build the command string
+                    std::stringstream cmdStream;
+                    for (const auto& arg : args) {
+                        // Quote each argument to handle spaces and special characters
+                        cmdStream << "\"" << arg << "\" ";
+                    }
+                    if (verbose) {
+                        std::cout << "Executing command: " << cmdStream.str() << std::endl;
+                    }
+                    if (std::system(cmdStream.str().c_str()) != 0) {
+                        std::cerr << "ERROR: Failed to execute command: " << cmdStream.str() << std::endl;
+                        exit(1);
+                    }
             }
-            printf("\n");
+            return 0;
         }
-
-#ifndef AUXILIARY_FILES_DESTINATION
-        execvp("mksquashfs", args);
-        perror("execvp(\"mksquashfs\") failed");
-#else
-        execvp(pathToMksquashfs, args);
-        fprintf(stderr, "execvp(\"%s\") failed: %s\n", pathToMksquashfs, strerror(errno));
-#endif
-        return -1; // exec never returns
-    }
-    return 0;
-}
 
 /* Validate desktop file using desktop-file-validate on the $PATH
 * execlp(), execvp(), and execvpe() search on the $PATH */
@@ -455,12 +460,12 @@ bool readFile(char* filename, size_t* size, char** buffer) {
     long fsize = ftell(f);
     fseek(f, 0, SEEK_SET);
 
-    char *indata = malloc(fsize);
+    char *indata = (char*) malloc(fsize);
     fread(indata, fsize, 1, f);
     fclose(f);
     *size = (int)fsize;
     *buffer = indata; 
-    return TRUE;
+    return true;
 }
 
 /* run a command outside the current appimage, block environs like LD_LIBRARY_PATH */
@@ -515,7 +520,7 @@ static GOptionEntry entries[] =
     { "runtime-file", 0, 0, G_OPTION_ARG_STRING, &runtime_file, "Runtime file to use", NULL },
     { "sign-key", 0, 0, G_OPTION_ARG_STRING, &sign_key, "Key ID to use for gpg[2] signatures", NULL},
     { G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_FILENAME_ARRAY, &remaining_args, NULL, NULL },
-    { 0,0,0,0,0,0,0 }
+    { 0,0,0, G_OPTION_ARG_NONE, 0,0,0 },
 };
 
 int
@@ -700,11 +705,11 @@ main (int argc, char *argv[])
 
         /* Read information from .desktop file */
         GKeyFile *kf = g_key_file_new ();
-        if (!g_key_file_load_from_file (kf, desktop_file, G_KEY_FILE_KEEP_TRANSLATIONS | G_KEY_FILE_KEEP_COMMENTS, NULL))
+        GKeyFileFlags flags = (GKeyFileFlags) (G_KEY_FILE_KEEP_TRANSLATIONS | G_KEY_FILE_KEEP_COMMENTS);
+        if (!g_key_file_load_from_file (kf, desktop_file, flags, NULL))
             die(".desktop file cannot be parsed");
         if (!get_desktop_entry(kf, "Categories"))
             die(".desktop file is missing a Categories= key");
-        
         if(verbose){
             fprintf (stderr,"Name: %s\n", get_desktop_entry(kf, "Name"));
             fprintf (stderr,"Icon: %s\n", get_desktop_entry(kf, "Icon"));
@@ -866,7 +871,7 @@ main (int argc, char *argv[])
         * so we need a patched one. https://github.com/plougher/squashfs-tools/pull/13
         * should hopefully change that. */
 
-        fprintf (stderr, "Generating squashfs...\n");
+        fprintf (stderr, "Loading runtime file...\n");
         size_t size = 0;
         char* data = NULL;
         // TODO: just write to the output file directly, we don't really need a memory buffer
@@ -882,6 +887,7 @@ main (int argc, char *argv[])
         if (verbose)
             printf("Size of the embedded runtime: %d bytes\n", size);
         
+        fprintf (stderr, "Generating squashfs...\n");
         int result = sfs_mksquashfs(source, destination, size);
         if(result != 0)
             die("sfs_mksquashfs error");
@@ -1074,9 +1080,9 @@ main (int argc, char *argv[])
                 GSubprocessFlags flags = G_SUBPROCESS_FLAGS_NONE;
 
                 if (!verbose) {
-                    flags = G_SUBPROCESS_FLAGS_STDERR_SILENCE | G_SUBPROCESS_FLAGS_STDOUT_SILENCE;
+                    flags = static_cast<GSubprocessFlags>(G_SUBPROCESS_FLAGS_STDERR_SILENCE | G_SUBPROCESS_FLAGS_STDOUT_SILENCE);
                 }
-
+                
                 GSubprocess* proc = g_subprocess_newv(zsyncmake_command, flags, &error);
 
                 if (proc == NULL) {

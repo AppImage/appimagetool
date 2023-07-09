@@ -1,3 +1,7 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdio.h>
 #include <stdint.h>
 #include <errno.h>
@@ -11,7 +15,6 @@
 
 #include "light_elf.h"
 #include "light_byteswap.h"
-
 
 typedef Elf32_Nhdr Elf_Nhdr;
 
@@ -125,13 +128,13 @@ bool appimage_get_elf_section_offset_and_length(const char* fname, const char* s
     int fd = open(fname, O_RDONLY);
     size_t map_size = (size_t) lseek(fd, 0, SEEK_END);
 
-    data = mmap(NULL, map_size, PROT_READ, MAP_SHARED, fd, 0);
+    data = (uint8_t*) mmap(NULL, map_size, PROT_READ, MAP_SHARED, fd, 0);
     close(fd);
 
     // this trick works as both 32 and 64 bit ELF files start with the e_ident[EI_NINDENT] section
-    unsigned char class = data[EI_CLASS];
+    uint8_t elf_class = data[EI_CLASS];
 
-    if (class == ELFCLASS32) {
+    if (elf_class == ELFCLASS32) {
         Elf32_Ehdr* elf;
         Elf32_Shdr* shdr;
 
@@ -145,7 +148,7 @@ bool appimage_get_elf_section_offset_and_length(const char* fname, const char* s
                 *length = shdr[i].sh_size;
             }
         }
-    } else if (class == ELFCLASS64) {
+    } else if (elf_class == ELFCLASS64) {
         Elf64_Ehdr* elf;
         Elf64_Shdr* shdr;
 
@@ -177,7 +180,7 @@ char* read_file_offset_length(const char* fname, unsigned long offset, unsigned 
 
     fseek(f, offset, SEEK_SET);
 
-    char* buffer = calloc(length + 1, sizeof(char));
+    char* buffer = (char*) calloc(length + 1, sizeof(char));
     fread(buffer, length, sizeof(char), f);
 
     fclose(f);
@@ -214,3 +217,7 @@ int appimage_print_binary(const char* fname, unsigned long offset, unsigned long
 
     return 0;
 }
+
+#ifdef __cplusplus
+}
+#endif
