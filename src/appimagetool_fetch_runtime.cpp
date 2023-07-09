@@ -64,7 +64,7 @@ public:
 
         this->_handle = curl_easy_init();
         if (_handle == nullptr) {
-            throw std::runtime_error("Failed to initialize libcurl\n");
+            throw std::runtime_error("Failed to initialize libcurl");
         }
 
         checkForCurlError(curl_easy_setopt(this->_handle, CURLOPT_URL, url.c_str()));
