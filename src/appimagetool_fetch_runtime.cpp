@@ -133,37 +133,62 @@ private:
         checkForCurlError(curl_easy_setopt(_handle, option, value));
     }
 
-    void setUpTlsCaChainCompatibility() {
+    void setUpTlsCaChainCompatibility(bool verbose) {
         // from curl 7.84.0 on, one can query the default values and check if these files or directories exist
         // if not, we anyway run the detection
 #define querying_supported LIBCURL_VERSION_NUM >= CURL_VERSION_BITS(7, 84, 0)
 #if querying_supported
-        if (std::filesystem::exists(getOption<char*>(CURLINFO_CAINFO))) {
-            return;
+        {
+            const auto caInfo = getOption<char*>(CURLINFO_CAINFO);
+            if (std::filesystem::exists(caInfo)) {
+                if (verbose) {
+                    std::cerr << "libcurl's default CA certificate bundle file " << caInfo << " was found on this system" << std::endl;
+                }
+                return;
+            }
         }
 
-        if (std::filesystem::is_directory(getOption<char*>(CURLINFO_CAPATH))) {
-            return;
+        {
+            const auto caPath = getOption<char*>(CURLINFO_CAPATH);
+            if (std::filesystem::is_directory(caPath)) {
+                if (verbose) {
+                    std::cerr << "libcurl's default CA certificate bundle directory " << caPath
+                              << " was found on this system" << std::endl;
+                }
+                return;
+            }
         }
+#else
+#warning "libcurl version too old, not trying to use default values for system-provided CA certificate bundles"
 #endif
 
-        const auto chainFile = findCaBundleFile();
-        if (!chainFile.empty()) {
-            setOption(CURLOPT_CAINFO, chainFile.c_str());
-            return;
+        {
+            const auto chainFile = findCaBundleFile();
+            if (!chainFile.empty()) {
+                if (verbose) {
+                    std::cerr << "Using CA bundle file in " << chainFile << std::endl;
+                }
+                setOption(CURLOPT_CAINFO, chainFile.c_str());
+                return;
+            }
         }
 
-        const auto chainDir = findCaBundleDirectory();
-        if (!chainDir.empty()) {
-            setOption(CURLOPT_CAINFO, chainDir.c_str());
-            return;
+        {
+            const auto chainDir = findCaBundleDirectory();
+            if (!chainDir.empty()) {
+                if (verbose) {
+                    std::cerr << "Using CA bundle file in " << chainDir << std::endl;
+                }
+                setOption(CURLOPT_CAINFO, chainDir.c_str());
+                return;
+            }
         }
 
         std::cerr << "Warning: could not find valid CA chain bundle, HTTPS requests will likely fail" << std::endl;
     }
 
 public:
-    explicit GetRequest(const std::string& url) : _errorBuffer(CURL_ERROR_SIZE) {
+    explicit GetRequest(const std::string& url, bool verbose = false) : _errorBuffer(CURL_ERROR_SIZE) {
         // not the cleanest approach to globally init curl here, but this method shouldn't be called more than once anyway
         curl_global_init(CURL_GLOBAL_ALL);
 
@@ -178,8 +203,12 @@ public:
         setOption(CURLOPT_FOLLOWLOCATION, 1L);
         setOption(CURLOPT_MAXREDIRS, 12L);
 
+        if (verbose) {
+            setOption(CURLOPT_VERBOSE, verbose ? 1L : 0L);
+        }
+
         // support TLS CA chains on various distributions
-        setUpTlsCaChainCompatibility();
+        setUpTlsCaChainCompatibility(verbose);
 
         // needed to handle request internally
         setOption(CURLOPT_WRITEFUNCTION, GetRequest::writeStuff);
@@ -193,10 +222,6 @@ public:
     ~GetRequest() {
         curl_global_cleanup();
         curl_easy_cleanup(this->_handle);
-    }
-
-    void setVerbose(bool verbose) {
-        setOption(CURLOPT_VERBOSE, verbose ? 1L : 0L);
     }
 
     CurlResponse perform() {
@@ -213,11 +238,7 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
     std::cerr << "Downloading runtime file from " << url << std::endl;
 
     try {
-        GetRequest request(url);
-
-        if (verbose) {
-            request.setVerbose(true);
-        }
+        GetRequest request(url, verbose);
 
         auto response = request.perform();
 
