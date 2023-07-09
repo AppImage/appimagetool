@@ -67,6 +67,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <algorithm>
 
 typedef enum {
     fARCH_i686,
@@ -288,7 +289,7 @@ int count_archs(bool* archs) {
     return countArchs;
 }
 
-gchar* archToName(fARCH arch) {
+std::string archToName(fARCH arch) {
     switch (arch) {
         case fARCH_aarch64:
             return "aarch64";
@@ -301,7 +302,7 @@ gchar* archToName(fARCH arch) {
     }
 }
 
-gchar* getArchName(bool* archs) {
+std::string getArchName(bool* archs) {
     if (archs[fARCH_i686])
         return archToName(fARCH_i686);
     else if (archs[fARCH_x86_64])
@@ -314,7 +315,7 @@ gchar* getArchName(bool* archs) {
         return "all";
 }
 
-void extract_arch_from_e_machine_field(int16_t e_machine, const gchar* sourcename, bool* archs) {
+void extract_arch_from_e_machine_field(int16_t e_machine, const std::string sourcename, bool* archs) {
     if (e_machine == 3) {
         archs[fARCH_i686] = 1;
         if(verbose)
@@ -340,33 +341,37 @@ void extract_arch_from_e_machine_field(int16_t e_machine, const gchar* sourcenam
     }
 }
 
-void extract_arch_from_text(gchar *archname, const gchar* sourcename, bool* archs) {
-    if (archname) {
-        archname = g_strstrip(archname);
-        if (archname) {
-            replacestr(archname, "-", "_");
-            replacestr(archname, " ", "_");
-            if (g_ascii_strncasecmp("i386", archname, 20) == 0
-                    || g_ascii_strncasecmp("i486", archname, 20) == 0
-                    || g_ascii_strncasecmp("i586", archname, 20) == 0
-                    || g_ascii_strncasecmp("i686", archname, 20) == 0
-                    || g_ascii_strncasecmp("intel_80386", archname, 20) == 0
-                    || g_ascii_strncasecmp("intel_80486", archname, 20) == 0
-                    || g_ascii_strncasecmp("intel_80586", archname, 20) == 0
-                    || g_ascii_strncasecmp("intel_80686", archname, 20) == 0
-                    ) {
+void extract_arch_from_text(std::string archname, const std::string sourcename, bool* archs) {
+    if (!archname.empty()) {
+        // Trim whitespace
+        archname.erase(archname.begin(), std::find_if(archname.begin(), archname.end(), [](int ch) {
+            return !std::isspace(ch);
+        }));
+        if (!archname.empty()) {
+            // Replace all dashes and spaces with underscores using C++11
+            std::replace(archname.begin(), archname.end(), '-', '_');
+            std::replace(archname.begin(), archname.end(), ' ', '_');
+
+            if (archname.substr(0, 4) == "i386"
+                || archname.substr(0, 4) == "i486"
+                || archname.substr(0, 4) == "i586"
+                || archname.substr(0, 4) == "i686"
+                || archname.substr(0, 14) == "intel_80386"
+                || archname.substr(0, 14) == "intel_80486"
+                || archname.substr(0, 14) == "intel_80586"
+                || archname.substr(0, 14) == "intel_80686") {
                 archs[fARCH_i686] = 1;
                 if (verbose)
                     std::cout << sourcename << " used for determining architecture i386" << std::endl;
-            } else if (g_ascii_strncasecmp("x86_64", archname, 20) == 0) {
+            } else if (archname.substr(0, 5) == "x86_64") {
                 archs[fARCH_x86_64] = 1;
                 if (verbose)
                     std::cout << sourcename << " used for determining architecture x86_64" << std::endl;
-            } else if (g_ascii_strncasecmp("arm", archname, 20) == 0) {
+            } else if (archname.substr(0, 3) == "arm") {
                 archs[fARCH_armhf] = 1;
                 if (verbose)
                     std::cout << sourcename << " used for determining architecture ARM" << std::endl;
-            } else if (g_ascii_strncasecmp("arm_aarch64", archname, 20) == 0) {
+            } else if (archname.substr(0, 11) == "arm_aarch64") {
                 archs[fARCH_aarch64] = 1;
                 if (verbose)
                     std::cerr << sourcename << " used for determining architecture ARM aarch64\n";
@@ -734,7 +739,8 @@ main (int argc, char *argv[])
 
         /* Determine the architecture */
         bool archs[4] = {0, 0, 0, 0};
-        extract_arch_from_text(getenv("ARCH"), "Environmental variable ARCH", archs);
+        std::string arch_str = getenv("ARCH") ? getenv("ARCH") : "";
+        extract_arch_from_text(arch_str.c_str(), "Environmental variable ARCH", archs);
         if (count_archs(archs) != 1) {
             /* If no $ARCH variable is set check a file */
             /* We use the next best .so that we can find to determine the architecture */
@@ -749,7 +755,7 @@ main (int argc, char *argv[])
                         die(" ...");
             }
         }
-        gchar* arch = getArchName(archs);
+        std::string arch = getArchName(archs);
         std::cerr << "Using architecture " << arch << std::endl;
 
         char app_name_for_filename[PATH_MAX];
@@ -1125,7 +1131,7 @@ main (int argc, char *argv[])
             std::cerr << "at https://github.com/AppImage/appimage.github.io\n";
             return 0;
         }
-        
+
     } else {
         std::cerr << "Error: no such file or directory: " << remaining_args[0] << "\n";
         return 1;

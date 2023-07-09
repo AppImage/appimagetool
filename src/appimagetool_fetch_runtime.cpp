@@ -113,7 +113,13 @@ public:
     }
 };
 
-bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
+#include <iostream>
+#include <sstream>
+#include <cstring>
+
+#include "appimagetool_fetch_runtime.h"
+
+bool fetch_runtime(std::string arch, size_t* size, char** buffer, bool verbose) {
     std::ostringstream urlstream;
     urlstream << "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-" << arch;
     auto url = urlstream.str();
@@ -144,14 +150,15 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
 
     *size = response.contentLength();
 
-    *buffer = (char *) calloc(response.contentLength() + 1, 1);
+    *buffer = new char[response.contentLength() + 1];
 
     if (*buffer == nullptr) {
         std::cerr << "Failed to allocate buffer" << std::endl;
         return false;
     }
 
-    std::copy(runtimeData.begin(), runtimeData.end(), *buffer);
+    std::memcpy(*buffer, runtimeData.data(), response.contentLength());
+    (*buffer)[response.contentLength()] = '\0';
 
     return true;
 }
