@@ -79,6 +79,9 @@ public:
         checkForCurlError(curl_easy_setopt(_handle, CURLOPT_ERRORBUFFER, _errorBuffer.data()));
     }
 
+    GetRequest(const GetRequest&) = delete;
+    GetRequest(GetRequest&&) = delete;
+
     ~GetRequest() {
         curl_global_cleanup();
         curl_easy_cleanup(this->_handle);
