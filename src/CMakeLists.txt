@@ -1,6 +1,7 @@
 add_executable(appimagetool
     appimagetool.c
     appimagetool_sign.c
+    appimagetool_fetch_runtime.cpp
     hexlify.c
     elf.c
     digest.c
@@ -15,6 +16,7 @@ target_link_libraries(appimagetool
     PkgConfig::libgio
     PkgConfig::libgcrypt
     PkgConfig::libgpgme
+    PkgConfig::libcurl
 )
 
 target_compile_definitions(appimagetool

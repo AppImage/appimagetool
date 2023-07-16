@@ -65,7 +65,15 @@ set -euxo pipefail
 
 apk add bash git gcc g++ cmake make file desktop-file-utils wget \
     gpgme-dev libgcrypt-dev libgcrypt-static argp-standalone zstd-dev zstd-static util-linux-static \
-    glib-static libassuan-static zlib-static libgpg-error-static
+    glib-static libassuan-static zlib-static libgpg-error-static \
+    curl-dev curl-static nghttp2-static libidn2-static openssl-libs-static brotli-static c-ares-static libunistring-static
+
+# libcurl's pkg-config scripts are broken. everywhere, everytime.
+# these additional flags have been collected from all the .pc files whose libs are mentioned as -l<lib> in Libs.private
+# first, let's make sure there is no Requires.private section
+grep -qv Requires.private /usr/lib/pkgconfig/libcurl.pc
+# now, let's add one
+echo "Requires.private: libcares libnghttp2 libidn2 libssl openssl libcrypto libbrotlicommon zlib" | tee -a /usr/lib/pkgconfig/libcurl.pc
 
 # in a Docker container, we can safely disable this check
 git config --global --add safe.directory '*'

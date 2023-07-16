@@ -55,14 +55,15 @@
 
 #include "util.h"
 
+#include "appimagetool_fetch_runtime.h"
 #include "appimagetool_sign.h"
 
-enum fARCH { 
-    fARCH_i386,
+typedef enum {
+    fARCH_i686,
     fARCH_x86_64,
-    fARCH_arm,
+    fARCH_armhf,
     fARCH_aarch64
-};
+} fARCH;
 
 static gchar const APPIMAGEIGNORE[] = ".appimageignore";
 static char _exclude_file_desc[256];
@@ -134,32 +135,32 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
         args[i++] = "-offset";
         args[i++] = offset_string;
 
-        if (sqfs_comp != NULL) {
-            args[i++] = "-comp";
-            args[i++] = sqfs_comp;
+        if (sqfs_comp == NULL) {
+            sqfs_comp = "zstd";
         }
+
+        args[i++] = "-comp";
+        args[i++] = sqfs_comp;
 
         args[i++] = "-root-owned";
         args[i++] = "-noappend";
 
         // compression-specific optimization
-        if (sqfs_comp != NULL) {
-            if (strcmp(sqfs_comp, "xz") != 0) {
-                // https://jonathancarter.org/2015/04/06/squashfs-performance-testing/ says:
-                // improved performance by using a 16384 block size with a sacrifice of around 3% more squashfs image space
-                args[i++] = "-Xdict-size";
-                args[i++] = "100%";
-                args[i++] = "-b";
-                args[i++] = "16384";
-            } else if (strcmp(sqfs_comp, "zstd") != 0) {
-                /*
-                 * > Build with 1MiB block size
-                 * > Using a bigger block size than mksquashfs's default improves read speed and can produce smaller AppImages as well
-                 * -- https://github.com/probonopd/go-appimage/commit/c4a112e32e8c2c02d1d388c8fa45a9222a529af3
-                 */
-                args[i++] = "-b";
-                args[i++] = "1M";
-            }
+        if (strcmp(sqfs_comp, "xz") == 0) {
+            // https://jonathancarter.org/2015/04/06/squashfs-performance-testing/ says:
+            // improved performance by using a 16384 block size with a sacrifice of around 3% more squashfs image space
+            args[i++] = "-Xdict-size";
+            args[i++] = "100%";
+            args[i++] = "-b";
+            args[i++] = "16384";
+        } else if (strcmp(sqfs_comp, "zstd") == 0) {
+            /*
+             * > Build with 1MiB block size
+             * > Using a bigger block size than mksquashfs's default improves read speed and can produce smaller AppImages as well
+             * -- https://github.com/probonopd/go-appimage/commit/c4a112e32e8c2c02d1d388c8fa45a9222a529af3
+             */
+            args[i++] = "-b";
+            args[i++] = "1M";
         }
 
         // check if ignore file exists and use it if possible
@@ -286,42 +287,55 @@ int count_archs(bool* archs) {
     return countArchs;
 }
 
+gchar* archToName(fARCH arch) {
+    switch (arch) {
+        case fARCH_aarch64:
+            return "aarch64";
+        case fARCH_armhf:
+            return "armhf";
+        case fARCH_i686:
+            return "i686";
+        case fARCH_x86_64:
+            return "x86_64";
+    }
+}
+
 gchar* getArchName(bool* archs) {
-    if (archs[fARCH_i386])
-        return "i386";
+    if (archs[fARCH_i686])
+        return archToName(fARCH_i686);
     else if (archs[fARCH_x86_64])
-        return "x86_64";
-    else if (archs[fARCH_arm])
-        return "armhf";
+        return archToName(fARCH_x86_64);
+    else if (archs[fARCH_armhf])
+        return archToName(fARCH_armhf);
     else if (archs[fARCH_aarch64])
-        return "aarch64";
+        return archToName(fARCH_aarch64);
     else
         return "all";
 }
 
 void extract_arch_from_e_machine_field(int16_t e_machine, const gchar* sourcename, bool* archs) {
     if (e_machine == 3) {
-        archs[fARCH_i386] = 1;
+        archs[fARCH_i686] = 1;
         if(verbose)
-            fprintf(stderr, "%s used for determining architecture i386\n", sourcename);
+            fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(fARCH_i686));
     }
 
     if (e_machine == 62) {
         archs[fARCH_x86_64] = 1;
         if(verbose)
-            fprintf(stderr, "%s used for determining architecture x86_64\n", sourcename);
+            fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(fARCH_x86_64));
     }
 
     if (e_machine == 40) {
-        archs[fARCH_arm] = 1;
+        archs[fARCH_armhf] = 1;
         if(verbose)
-            fprintf(stderr, "%s used for determining architecture armhf\n", sourcename);
+            fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(fARCH_armhf));
     }
 
     if (e_machine == 183) {
         archs[fARCH_aarch64] = 1;
         if(verbose)
-            fprintf(stderr, "%s used for determining architecture aarch64\n", sourcename);
+            fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(fARCH_aarch64));
     }
 }
 
@@ -340,7 +354,7 @@ void extract_arch_from_text(gchar *archname, const gchar* sourcename, bool* arch
                     || g_ascii_strncasecmp("intel_80586", archname, 20) == 0
                     || g_ascii_strncasecmp("intel_80686", archname, 20) == 0
                     ) {
-                archs[fARCH_i386] = 1;
+                archs[fARCH_i686] = 1;
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture i386\n", sourcename);
             } else if (g_ascii_strncasecmp("x86_64", archname, 20) == 0) {
@@ -348,7 +362,7 @@ void extract_arch_from_text(gchar *archname, const gchar* sourcename, bool* arch
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture x86_64\n", sourcename);
             } else if (g_ascii_strncasecmp("arm", archname, 20) == 0) {
-                archs[fARCH_arm] = 1;
+                archs[fARCH_armhf] = 1;
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture ARM\n", sourcename);
             } else if (g_ascii_strncasecmp("arm_aarch64", archname, 20) == 0) {
@@ -429,7 +443,7 @@ gchar* get_desktop_entry(GKeyFile *kf, char *key) {
     return value;
 }
 
-bool readFile(char* filename, int* size, char** buffer) {
+bool readFile(char* filename, size_t* size, char** buffer) {
     FILE* f = fopen(filename, "rb");
     if (f==NULL) {
         *buffer = 0;
@@ -494,7 +508,7 @@ static GOptionEntry entries[] =
     { "version", 0, 0, G_OPTION_ARG_NONE, &showVersionOnly, "Show version number", NULL },
     { "verbose", 'v', 0, G_OPTION_ARG_NONE, &verbose, "Produce verbose output", NULL },
     { "sign", 's', 0, G_OPTION_ARG_NONE, &sign, "Sign with gpg[2]", NULL },
-    { "comp", 0, 0, G_OPTION_ARG_STRING, &sqfs_comp, "Squashfs compression", NULL },
+    { "comp", 0, 0, G_OPTION_ARG_STRING, &sqfs_comp, "Squashfs compression (default: zstd", NULL },
     { "mksquashfs-opt", 0, 0, G_OPTION_ARG_STRING_ARRAY, &sqfs_opts, "Argument to pass through to mksquashfs; can be specified multiple times", NULL },
     { "no-appstream", 'n', 0, G_OPTION_ARG_NONE, &no_appstream, "Do not check AppStream metadata", NULL },
     { "exclude-file", 0, 0, G_OPTION_ARG_STRING, &exclude_file, _exclude_file_desc, NULL },
@@ -598,11 +612,6 @@ main (int argc, char *argv[])
     // always show version, but exit immediately if only the version number was requested
     if (showVersionOnly)
         exit(0);
-
-    if(sqfs_comp == NULL) {
-        fprintf(stderr, "WARNING: mksquashfs is going to use its default compression algorithm\n");
-        fprintf(stderr, "Consider passing --comp zstd for best performance\n");
-    }
 
     /* Check for dependencies here. Better fail early if they are not present. */
     if(! g_find_program_in_path ("file"))
@@ -750,11 +759,21 @@ main (int argc, char *argv[])
         fprintf(stderr, "Using architecture %s\n", arch);
 
         char app_name_for_filename[PATH_MAX];
-        sprintf(app_name_for_filename, "%s", get_desktop_entry(kf, "Name"));
-        replacestr(app_name_for_filename, " ", "_");
-        
-        if(verbose)
-            fprintf (stderr,"App name for filename: %s\n", app_name_for_filename);
+        {
+            const char* const env_app_name = getenv("APPIMAGETOOL_APP_NAME");
+            if (env_app_name != NULL) {
+                fprintf(stderr, "Using user-specified app name: %s\n", env_app_name);
+                strncpy(app_name_for_filename, env_app_name, PATH_MAX);
+            } else {
+                const gchar* const desktop_file_app_name = get_desktop_entry(kf, "Name");
+                sprintf(app_name_for_filename, "%s", desktop_file_app_name);
+                replacestr(app_name_for_filename, " ", "_");
+
+                if (verbose) {
+                    fprintf(stderr, "Using app name extracted from desktop file: %s\n", app_name_for_filename);
+                }
+            }
+        }
         
         if (remaining_args[1]) {
             destination = remaining_args[1];
@@ -872,22 +891,21 @@ main (int argc, char *argv[])
         * should hopefully change that. */
 
         fprintf (stderr, "Generating squashfs...\n");
-        int size = 0;
+        size_t size = 0;
         char* data = NULL;
-        bool using_external_data = false;
+        // TODO: just write to the output file directly, we don't really need a memory buffer
         if (runtime_file != NULL) {
-            if (!readFile(runtime_file, &size, &data))
+            if (!readFile(runtime_file, &size, &data)) {
                 die("Unable to load provided runtime file");
-            using_external_data = true;
+            }
         } else {
-#ifdef HAVE_BINARY_RUNTIME
-            /* runtime is embedded into this executable
-            * http://stupefydeveloper.blogspot.de/2008/08/cc-embed-binary-data-into-elf.html */
-            size = runtime_len;
-            data = runtime;
-#else
-            die("No runtime file was provided");
-#endif
+            if (!fetch_runtime(arch, &size, &data, verbose)) {
+                die(
+                    "Failed to download runtime file, please download the runtime manually from"
+                    "https://github.com/AppImage/type2-runtime/releases and pass it to appimagetool with"
+                    "--runtime-file"
+                );
+            }
         }
         if (verbose)
             printf("Size of the embedded runtime: %d bytes\n", size);
@@ -905,8 +923,8 @@ main (int argc, char *argv[])
         fseek(fpdst, 0, SEEK_SET);
         fwrite(data, size, 1, fpdst);
         fclose(fpdst);
-        if (using_external_data)
-            free(data);
+        // TODO: avoid memory buffer (see above)
+        free(data);
 
         fprintf (stderr, "Marking the AppImage as executable...\n");
         if (chmod (destination, 0755) < 0) {

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 project(appimagetool)
 
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 # determine Git version based on distance to tag
 # FIXME: right now we have no tags, so we just use the current Git commit's hash
@@ -78,6 +78,7 @@ pkg_check_modules(libgcrypt REQUIRED libgcrypt IMPORTED_TARGET)
 # TODO: in the long term, we plan to get rid of GLib/GIO by moving to C++
 pkg_check_modules(libglib REQUIRED glib-2.0 IMPORTED_TARGET)
 pkg_check_modules(libgio REQUIRED gio-2.0 IMPORTED_TARGET)
+pkg_check_modules(libcurl REQUIRED libcurl IMPORTED_TARGET)
 
 # Alpine Linux does not ship an argp.h as part of the standard compiler toolchain
 unset(ARGP_H_FOUND CACHE)
