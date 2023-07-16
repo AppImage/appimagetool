@@ -875,7 +875,16 @@ main (int argc, char *argv[])
                 die("Unable to load provided runtime file");
             }
         } else {
-            if (!fetch_runtime(arch, &size, &data, verbose)) {
+            RuntimeType runtimeType = RUNTIME_TYPE_CLASSIC;
+
+            if (getenv("DOWNLOAD_STATIC_RUNTIME") != NULL) {
+                fprintf(stderr, "Downloading static runtime\n");
+                runtimeType = RUNTIME_TYPE_STATIC;
+            } else {
+                fprintf(stderr, "Downloading classic runtime\n");
+            }
+
+            if (!fetch_runtime(arch, &size, &data, runtimeType, verbose)) {
                 die(
                     "Failed to download runtime file, please download the runtime manually from"
                     "https://github.com/AppImage/type2-runtime/releases and pass it to appimagetool with"

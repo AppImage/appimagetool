@@ -230,9 +230,16 @@ public:
     }
 };
 
-bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
+bool fetch_runtime(char *arch, size_t *size, char **buffer, RuntimeType runtimeType, bool verbose) {
     std::ostringstream urlstream;
-    urlstream << "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-" << arch;
+    switch (runtimeType) {
+        case RUNTIME_TYPE_CLASSIC:
+            urlstream << "https://github.com/AppImage/AppImageKit/releases/download/continuous/runtime-" << arch;
+            break;
+        case RUNTIME_TYPE_STATIC:
+            urlstream << "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-" << arch;
+            break;
+    }
     auto url = urlstream.str();
 
     std::cerr << "Downloading runtime file from " << url << std::endl;
