@@ -140,7 +140,7 @@ private:
 #if querying_supported
         {
             const auto caInfo = getOption<char*>(CURLINFO_CAINFO);
-            if (std::filesystem::exists(caInfo)) {
+            if (caInfo != nullptr && std::filesystem::exists(caInfo)) {
                 if (verbose) {
                     std::cerr << "libcurl's default CA certificate bundle file " << caInfo << " was found on this system" << std::endl;
                 }
@@ -150,7 +150,7 @@ private:
 
         {
             const auto caPath = getOption<char*>(CURLINFO_CAPATH);
-            if (std::filesystem::is_directory(caPath)) {
+            if (caPath != nullptr && std::filesystem::is_directory(caPath)) {
                 if (verbose) {
                     std::cerr << "libcurl's default CA certificate bundle directory " << caPath
                               << " was found on this system" << std::endl;
