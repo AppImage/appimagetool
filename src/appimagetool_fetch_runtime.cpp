@@ -134,6 +134,9 @@ private:
     }
 
     void setUpTlsCaChainCompatibility(bool verbose) {
+        bool foundFile = false;
+        bool foundDir = false;
+
         // from curl 7.84.0 on, one can query the default values and check if these files or directories exist
         // if not, we anyway run the detection
 #define querying_supported LIBCURL_VERSION_NUM >= CURL_VERSION_BITS(7, 84, 0)
@@ -144,7 +147,12 @@ private:
                 if (verbose) {
                     std::cerr << "libcurl's default CA certificate bundle file " << caInfo << " was found on this system" << std::endl;
                 }
-                return;
+                foundFile = true;
+            } else {
+                if (verbose) {
+                    std::cerr << "libcurl's default CA certificate bundle file " << caInfo << " was not found on this system, nulling" << std::endl;
+                }
+                setOption(CURLOPT_CAINFO, "");
             }
         }
 
@@ -155,36 +163,43 @@ private:
                     std::cerr << "libcurl's default CA certificate bundle directory " << caPath
                               << " was found on this system" << std::endl;
                 }
-                return;
+                foundDir = true;
+            } else {
+                if (verbose) {
+                    std::cerr << "libcurl's default CA certificate bundle directory " << caPath << " was not found on this system, nulling" << std::endl;
+                }
+                setOption(CURLOPT_CAPATH, "");
             }
         }
 #else
 #warning "libcurl version too old, not trying to use default values for system-provided CA certificate bundles"
 #endif
 
-        {
+        if (!foundFile) {
             const auto chainFile = findCaBundleFile();
             if (!chainFile.empty()) {
                 if (verbose) {
                     std::cerr << "Using CA bundle file in " << chainFile << std::endl;
                 }
                 setOption(CURLOPT_CAINFO, chainFile.c_str());
-                return;
             }
+            foundFile = true;
         }
 
-        {
+        if (!foundDir) {
             const auto chainDir = findCaBundleDirectory();
             if (!chainDir.empty()) {
                 if (verbose) {
-                    std::cerr << "Using CA bundle file in " << chainDir << std::endl;
+                    std::cerr << "Using CA bundle dir in " << chainDir << std::endl;
                 }
-                setOption(CURLOPT_CAINFO, chainDir.c_str());
-                return;
+                setOption(CURLOPT_CAPATH, chainDir.c_str());
             }
+            foundDir = true;
         }
 
-        std::cerr << "Warning: could not find valid CA chain bundle, HTTPS requests will likely fail" << std::endl;
+        if (!foundFile && !foundDir) {
+            std::cerr << "Warning: could not find valid CA chain bundle, HTTPS requests will likely fail" << std::endl;
+        }
     }
 
 public:
