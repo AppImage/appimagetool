@@ -31,8 +31,7 @@ case "$ARCH" in
 esac
 
 # libassuan-static is supported only from 3.19 onwards
-# TODO: change this to a stable release once Alpine 3.19 was released
-image="$image_prefix"/alpine:edge
+image="$image_prefix"/alpine:3.19
 
 repo_root="$(readlink -f "$(dirname "${BASH_SOURCE[0]}")"/..)"
 
