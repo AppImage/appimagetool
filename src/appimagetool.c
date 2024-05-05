@@ -877,8 +877,8 @@ main (int argc, char *argv[])
         } else {
             if (!fetch_runtime(arch, &size, &data, verbose)) {
                 die(
-                    "Failed to download runtime file, please download the runtime manually from"
-                    "https://github.com/AppImage/type2-runtime/releases and pass it to appimagetool with"
+                    "Failed to download runtime file, please download the runtime manually from "
+                    "https://github.com/AppImage/type2-runtime/releases and pass it to appimagetool with "
                     "--runtime-file"
                 );
             }
