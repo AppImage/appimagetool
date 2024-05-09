@@ -38,11 +38,11 @@ fi
 
 make -j"$jobs"
 
+# TODO: Find more elegant way to do this
 cd src/
 gcc -static -o desktop-file-validate keyfileutils.o validate.o validator.o mimeutils.o -lglib-2.0 -lintl
-gcc -static -o update-desktop-database  update-desktop-database.o mimeutils.o -lglib-2.0 -lintl
-gcc -static -o desktop-file-install keyfileutils.o validate.o install.o mimeutils.o -lglib-2.0 -lintl
-strip desktop-file-install desktop-file-validate update-desktop-database
+strip desktop-file-validate
+cp desktop-file-validate /usr/bin/
 
 cd ..
 
