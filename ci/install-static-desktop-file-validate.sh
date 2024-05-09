@@ -2,12 +2,12 @@
 
 set -euxo pipefail
 
-# if [[ "${1:-}" == "" ]]; then
-#     echo "Usage: $0 <version>"
-#     exit 2
-# fi
+if [[ "${1:-}" == "" ]]; then
+    echo "Usage: $0 <version>"
+    exit 2
+fi
 
-# version="$1"
+version="$1"
 
 build_dir="$(mktemp -d -t desktop-file-utils-build-XXXXXX)"
 
@@ -21,7 +21,7 @@ trap cleanup EXIT
 pushd "$build_dir"
 
 apk add glib-static glib-dev autoconf automake
-wget -c https://gitlab.freedesktop.org/xdg/desktop-file-utils/-/archive/56d220dd679c7c3a8f995a41a27a7d6f3df49dea/desktop-file-utils-56d220dd679c7c3a8f995a41a27a7d6f3df49dea.tar.gz
+wget -c "https://gitlab.freedesktop.org/xdg/desktop-file-utils/-/archive/"$version"/desktop-file-utils-"$version".tar.gz"
 tar xf desktop-file-utils-*.tar.gz
 cd desktop-file-utils-*/
 # The next 2 lines are a workaround for: checking build system type... ./config.guess: unable to guess system type
