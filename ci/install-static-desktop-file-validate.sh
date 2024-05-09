@@ -43,7 +43,4 @@ cd src/
 gcc -static -o desktop-file-validate keyfileutils.o validate.o validator.o mimeutils.o -lglib-2.0 -lintl
 strip desktop-file-validate
 cp desktop-file-validate /usr/bin/
-
 cd ..
-
-make install
