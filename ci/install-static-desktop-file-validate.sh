@@ -20,7 +20,7 @@ trap cleanup EXIT
 
 pushd "$build_dir"
 
-apk add glib-static glib-dev
+apk add glib-static glib-dev autoconf
 wget -c https://gitlab.freedesktop.org/xdg/desktop-file-utils/-/archive/56d220dd679c7c3a8f995a41a27a7d6f3df49dea/desktop-file-utils-56d220dd679c7c3a8f995a41a27a7d6f3df49dea.tar.gz
 tar xf desktop-file-utils-*.tar.gz
 cd desktop-file-utils-*/
