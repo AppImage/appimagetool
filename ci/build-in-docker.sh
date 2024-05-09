@@ -79,6 +79,7 @@ git config --global --add safe.directory '*'
 
 bash -euxo pipefail /source/ci/install-static-desktop-file-validate.sh
 bash -euxo pipefail /source/ci/install-static-mksquashfs.sh 4.6.1
+bash -euxo pipefail /source/ci/install-static-zsyncmake.sh 4.5.1
 
 bash -euxo pipefail /source/ci/build.sh
 
