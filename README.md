@@ -55,3 +55,7 @@ If you are on an Intel machine and would like to cross-compile for ARM:
 * Prepare the Docker system for cross-compiling with `docker run --rm --privileged multiarch/qemu-user-static --reset -p yes`, then run
 * For 64 bit ARM, run `ARCH=aarch64 bash ./ci/build-in-docker.sh`
 * For 32 bit ARM, run `ARCH=armhf bash ./ci/build-in-docker.sh`
+
+## Changelog
+
+* Unlike previous versions of this tool provided in the [AppImageKit](https://github.com/AppImage/AppImageKit/) repository, this version downloads the latest AppImage runtime (which will become part of the AppImage) from https://github.com/AppImage/type2-runtime/releases. If you do not like this (or if your build system does not have Internet access), you can supply a locally downloaded AppImage runtime using the `--runtime-file` parameter instead.
