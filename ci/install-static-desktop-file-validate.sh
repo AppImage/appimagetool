@@ -2,12 +2,12 @@
 
 set -euxo pipefail
 
-if [[ "${1:-}" == "" ]]; then
-    echo "Usage: $0 <version>"
-    exit 2
-fi
+# if [[ "${1:-}" == "" ]]; then
+#     echo "Usage: $0 <version>"
+#     exit 2
+# fi
 
-version="$1"
+# version="$1"
 
 build_dir="$(mktemp -d -t desktop-file-utils-build-XXXXXX)"
 
