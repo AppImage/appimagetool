@@ -65,7 +65,8 @@ set -euxo pipefail
 apk add bash git gcc g++ cmake make file wget \
     gpgme-dev libgcrypt-dev libgcrypt-static argp-standalone zstd-dev zstd-static util-linux-static \
     glib-static libassuan-static zlib-static libgpg-error-static \
-    curl-dev curl-static nghttp2-static libidn2-static openssl-libs-static brotli-static c-ares-static libunistring-static
+    curl-dev curl-static nghttp2-static libidn2-static openssl-libs-static brotli-static c-ares-static libunistring-static \
+    glib-static glib-dev autoconf automake
 
 # libcurl's pkg-config scripts are broken. everywhere, everytime.
 # these additional flags have been collected from all the .pc files whose libs are mentioned as -l<lib> in Libs.private

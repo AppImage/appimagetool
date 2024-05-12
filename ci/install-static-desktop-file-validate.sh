@@ -20,7 +20,8 @@ trap cleanup EXIT
 
 pushd "$build_dir"
 
-apk add glib-static glib-dev autoconf automake
+# apk add glib-static glib-dev autoconf automake # Moved to build-in-docker.sh
+
 wget -c "https://gitlab.freedesktop.org/xdg/desktop-file-utils/-/archive/"$version"/desktop-file-utils-"$version".tar.gz"
 tar xf desktop-file-utils-*.tar.gz
 cd desktop-file-utils-*/
