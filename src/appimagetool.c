@@ -380,8 +380,9 @@ int16_t read_elf_e_machine_field(const gchar* file_path) {
     file = fopen(file_path, "rb");
     if (file) {
         fseek(file, 0x12, SEEK_SET);
-        fgets((char*) (&e_machine), 0x02, file);
+        fread(&e_machine, sizeof(e_machine), 1, file);
         fclose(file);
+        e_machine = GINT16_FROM_LE(e_machine);
     }
 
     return e_machine;
