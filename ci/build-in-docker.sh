@@ -62,10 +62,11 @@ docker run \
 
 set -euxo pipefail
 
-apk add bash git gcc g++ cmake make file desktop-file-utils wget \
+apk add bash git gcc g++ cmake make file wget \
     gpgme-dev libgcrypt-dev libgcrypt-static argp-standalone zstd-dev zstd-static util-linux-static \
     glib-static libassuan-static zlib-static libgpg-error-static \
-    curl-dev curl-static nghttp2-static libidn2-static openssl-libs-static brotli-static c-ares-static libunistring-static
+    curl-dev curl-static nghttp2-static libidn2-static openssl-libs-static brotli-static c-ares-static libunistring-static \
+    glib-static glib-dev autoconf automake
 
 # libcurl's pkg-config scripts are broken. everywhere, everytime.
 # these additional flags have been collected from all the .pc files whose libs are mentioned as -l<lib> in Libs.private
@@ -77,7 +78,9 @@ echo "Requires.private: libcares libnghttp2 libidn2 libssl openssl libcrypto lib
 # in a Docker container, we can safely disable this check
 git config --global --add safe.directory '*'
 
+bash -euxo pipefail /source/ci/install-static-desktop-file-validate.sh 56d220dd679c7c3a8f995a41a27a7d6f3df49dea
 bash -euxo pipefail /source/ci/install-static-mksquashfs.sh 4.6.1
+bash -euxo pipefail /source/ci/install-static-zsyncmake.sh 0.6.2
 
 bash -euxo pipefail /source/ci/build.sh
 
