@@ -247,7 +247,7 @@ public:
 
 bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
     std::ostringstream urlstream;
-    urlstream << "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-" << arch;
+    urlstream << "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-fuse3-" << arch;
     auto url = urlstream.str();
 
     std::cerr << "Downloading runtime file from " << url << std::endl;
