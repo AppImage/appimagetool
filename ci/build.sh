@@ -41,7 +41,7 @@ cp "$(which mksquashfs)" AppDir/usr/bin
 cp "$repo_root"/resources/AppRun.sh AppDir/AppRun
 chmod +x AppDir/AppRun
 
-wget https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-"$ARCH"
+wget https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-fuse3-"$ARCH"
 
 pushd AppDir
 ln -s usr/share/applications/appimagetool.desktop .
