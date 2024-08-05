@@ -52,6 +52,6 @@ popd
 find AppDir
 cat AppDir/appimagetool.desktop
 
-AppDir/AppRun ---file runtime-fuse3-"$ARCH" AppDir
+AppDir/AppRun --runtime-file runtime-fuse3-"$ARCH" AppDir
 
 mv appimagetool-*.AppImage "$old_cwd"
