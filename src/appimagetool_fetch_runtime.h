@@ -7,7 +7,13 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose);
+
+typedef enum {
+    RUNTIME_TYPE_CLASSIC,
+    RUNTIME_TYPE_STATIC,
+} RuntimeType;
+
+bool fetch_runtime(char *arch, size_t *size, char **buffer, RuntimeType runtimeType, bool verbose);
 #ifdef __cplusplus
 }
 #endif
