@@ -21,7 +21,7 @@ trap cleanup EXIT
 
 apk add bash git gcc g++ cmake make file desktop-file-utils wget \
     gpgme-dev libgcrypt-dev libgcrypt-static argp-standalone zstd-dev zstd-static util-linux-static \
-    glib-static libassuan-static zlib-static libgpg-error-static squashfs-tools \
+    glib-static libassuan-static zlib-static libgpg-error-static \
     curl-dev curl-static nghttp2-static libidn2-static openssl-libs-static brotli-static c-ares-static libunistring-static
 
 
@@ -31,6 +31,8 @@ repo_root=/src
 old_cwd="$(readlink -f "$PWD")"
 
 #pushd "$build_dir"
+
+/bin/bash /scripts/install-static-mksquashfs.sh 4.6.1
 
 cmake "$repo_root" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_STATIC=ON
 
