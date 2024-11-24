@@ -7,6 +7,26 @@ if [[ "${ARCH:-}" == "" ]]; then
     exit 1
 fi
 
+case "$ARCH" in
+    x86_64)
+        platform=linux/amd64
+        ;;
+    i686)
+        platform=linux/i386
+        ;;
+    armhf)
+        platform=linux/arm/v7
+        ;;
+    aarch64)
+        platform=linux/arm64/v8
+        ;;
+    *)
+        echo "unknown architecture: $ARCH"
+        exit 2
+        ;;
+esac
+
+
 # libassuan-static is supported only from 3.19 onwards
 image=alpine:3.19
 
