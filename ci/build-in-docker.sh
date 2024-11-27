@@ -9,19 +9,15 @@ fi
 
 case "$ARCH" in
     x86_64)
-        image_prefix=amd64
         platform=linux/amd64
         ;;
     i686)
-        image_prefix=i386
         platform=linux/i386
         ;;
     armhf)
-        image_prefix=arm32v7
         platform=linux/arm/v7
         ;;
     aarch64)
-        image_prefix=arm64v8
         platform=linux/arm64/v8
         ;;
     loong64)
@@ -43,8 +39,9 @@ case "$ARCH" in
         ;;
 esac
 
+
 # libassuan-static is supported only from 3.19 onwards
-image="$image_prefix"/alpine:3.19
+image=alpine:3.19
 
 repo_root="$(readlink -f "$(dirname "${BASH_SOURCE[0]}")"/..)"
 
