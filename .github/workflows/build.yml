@@ -39,7 +39,7 @@ jobs:
 
   upload:
     name: Create release and upload artifacts
-    needs: 
+    needs:
       - build
     runs-on: ubuntu-20.04
 
