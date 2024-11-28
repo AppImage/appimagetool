@@ -832,7 +832,8 @@ main (int argc, char *argv[])
                 fprintf (stderr, "WARNING: AppStream upstream metadata is missing, please consider creating it\n");
                 fprintf (stderr, "         in usr/share/metainfo/%s\n", application_id);
                 fprintf (stderr, "         Please see https://www.freedesktop.org/software/appstream/docs/chap-Quickstart.html#sect-Quickstart-DesktopApps\n");
-                fprintf (stderr, "         for more information or use the generator at http://output.jsbin.com/qoqukof.\n");
+                fprintf (stderr, "         for more information or use the generator at\n");
+                fprintf (stderr, "         https://docs.appimage.org/packaging-guide/optional/appstream.html#using-the-appstream-generator\n");
             } else {
                 fprintf (stderr, "AppStream upstream metadata found in usr/share/metainfo/%s\n", application_id);
                 /* Use ximion's appstreamcli to make sure that desktop file and appdata match together */
