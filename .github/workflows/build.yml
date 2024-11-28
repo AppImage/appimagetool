@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-20.04
 
     steps:
-      - name: Download artifact
+      - name: Download artifacts
         uses: actions/download-artifact@v4
 
       - name: Inspect directory after downloading artifacts
