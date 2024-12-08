@@ -14,18 +14,24 @@
 class CurlResponse {
 private:
     bool _success;
+    long _statusCode;
     std::string _effectiveUrl;
     curl_off_t _contentLength;
     std::vector<char> _data;
 
 public:
-    CurlResponse(bool success, curl_off_t contentLength, std::vector<char> data)
-        : _success(success)
-        , _contentLength(contentLength)
-        , _data(std::move(data)) {}
+    CurlResponse(bool success, long statusCode, curl_off_t contentLength, std::vector<char> data)
+            : _success(success)
+            , _statusCode(statusCode)
+            , _contentLength(contentLength)
+            , _data(std::move(data)) {}
 
     [[nodiscard]] bool success() const {
         return _success;
+    }
+
+    [[nodiscard]] auto statusCode() const {
+        return _statusCode;
     }
 
     [[nodiscard]] curl_off_t contentLength() const {
@@ -241,7 +247,12 @@ public:
 
     CurlResponse perform() {
         auto result = curl_easy_perform(this->_handle);
-        return {result == CURLE_OK, getOption<curl_off_t>(CURLINFO_CONTENT_LENGTH_DOWNLOAD_T), _buffer};
+        return {
+            result == CURLE_OK,
+            getOption<long>(CURLINFO_RESPONSE_CODE),
+            getOption<curl_off_t>(CURLINFO_CONTENT_LENGTH_DOWNLOAD_T),
+            _buffer
+        };
     }
 };
 
@@ -256,6 +267,11 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
         GetRequest request(url, verbose);
 
         auto response = request.perform();
+
+        if (response.statusCode() != 200) {
+            std::cerr << "Failed to download runtime: server returned status code " << response.statusCode() << std::endl;
+            return false;
+        }
 
         std::cerr << "Downloaded runtime binary of size " << response.contentLength() << std::endl;
 

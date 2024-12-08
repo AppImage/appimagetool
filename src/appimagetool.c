@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright (c) 2004-23 Simon Peter
+ * Copyright (c) 2004-24 Simon Peter
  * 
  * All Rights Reserved.
  * 
@@ -156,12 +156,13 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
             args[i++] = "16384";
         } else if (strcmp(sqfs_comp, "zstd") == 0) {
             /*
-             * > Build with 1MiB block size
-             * > Using a bigger block size than mksquashfs's default improves read speed and can produce smaller AppImages as well
-             * -- https://github.com/probonopd/go-appimage/commit/c4a112e32e8c2c02d1d388c8fa45a9222a529af3
+             * > Build with default 128K block size
+             * > It used to be 1M but that actually causes much higher startup times.
+             * > Some testing might be needed to see if there is some other value that actually improves performance.
+             * -- https://github.com/AppImage/appimagetool/issues/64
              */
             args[i++] = "-b";
-            args[i++] = "1M";
+            args[i++] = "128K";
         }
 
         // check if ignore file exists and use it if possible
@@ -366,7 +367,8 @@ void extract_arch_from_text(gchar *archname, const gchar* sourcename, bool* arch
                 archs[fARCH_armhf] = 1;
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture ARM\n", sourcename);
-            } else if (g_ascii_strncasecmp("arm_aarch64", archname, 20) == 0) {
+            } else if (g_ascii_strncasecmp("arm_aarch64", archname, 20) == 0 ||
+                       g_ascii_strncasecmp("aarch64", archname, 20) == 0) {
                 archs[fARCH_aarch64] = 1;
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture ARM aarch64\n", sourcename);
