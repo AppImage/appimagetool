@@ -75,7 +75,7 @@ echo "Requires.private: libcares libnghttp2 libidn2 libssl openssl libcrypto lib
 # in a Docker container, we can safely disable this check
 git config --global --add safe.directory '*'
 
-bash -euxo pipefail /source/ci/install-static-desktop-file-validate.sh 56d220dd679c7c3a8f995a41a27a7d6f3df49dea
+bash -euxo pipefail /source/ci/install-static-desktop-file-validate.sh 0.28
 bash -euxo pipefail /source/ci/install-static-mksquashfs.sh 4.6.1
 bash -euxo pipefail /source/ci/install-static-zsyncmake.sh 0.6.2
 
