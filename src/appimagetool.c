@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright (c) 2004-23 Simon Peter
+ * Copyright (c) 2004-24 Simon Peter
  * 
  * All Rights Reserved.
  * 
@@ -33,6 +33,7 @@
 #include <stdlib.h>
 
 #include <glib.h>
+#include <glib/gstdio.h>
 #include <gio/gio.h>
 
 #include <stdio.h>
@@ -155,12 +156,13 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
             args[i++] = "16384";
         } else if (strcmp(sqfs_comp, "zstd") == 0) {
             /*
-             * > Build with 1MiB block size
-             * > Using a bigger block size than mksquashfs's default improves read speed and can produce smaller AppImages as well
-             * -- https://github.com/probonopd/go-appimage/commit/c4a112e32e8c2c02d1d388c8fa45a9222a529af3
+             * > Build with default 128K block size
+             * > It used to be 1M but that actually causes much higher startup times.
+             * > Some testing might be needed to see if there is some other value that actually improves performance.
+             * -- https://github.com/AppImage/appimagetool/issues/64
              */
             args[i++] = "-b";
-            args[i++] = "1M";
+            args[i++] = "128K";
         }
 
         // check if ignore file exists and use it if possible
@@ -365,7 +367,8 @@ void extract_arch_from_text(gchar *archname, const gchar* sourcename, bool* arch
                 archs[fARCH_armhf] = 1;
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture ARM\n", sourcename);
-            } else if (g_ascii_strncasecmp("arm_aarch64", archname, 20) == 0) {
+            } else if (g_ascii_strncasecmp("arm_aarch64", archname, 20) == 0 ||
+                       g_ascii_strncasecmp("aarch64", archname, 20) == 0) {
                 archs[fARCH_aarch64] = 1;
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture ARM aarch64\n", sourcename);
@@ -380,8 +383,9 @@ int16_t read_elf_e_machine_field(const gchar* file_path) {
     file = fopen(file_path, "rb");
     if (file) {
         fseek(file, 0x12, SEEK_SET);
-        fgets((char*) (&e_machine), 0x02, file);
+        fread(&e_machine, sizeof(e_machine), 1, file);
         fclose(file);
+        e_machine = GINT16_FROM_LE(e_machine);
     }
 
     return e_machine;
@@ -852,7 +856,8 @@ main (int argc, char *argv[])
                 fprintf (stderr, "WARNING: AppStream upstream metadata is missing, please consider creating it\n");
                 fprintf (stderr, "         in usr/share/metainfo/%s\n", application_id);
                 fprintf (stderr, "         Please see https://www.freedesktop.org/software/appstream/docs/chap-Quickstart.html#sect-Quickstart-DesktopApps\n");
-                fprintf (stderr, "         for more information or use the generator at http://output.jsbin.com/qoqukof.\n");
+                fprintf (stderr, "         for more information or use the generator at\n");
+                fprintf (stderr, "         https://docs.appimage.org/packaging-guide/optional/appstream.html#using-the-appstream-generator\n");
             } else {
                 fprintf (stderr, "AppStream upstream metadata found in usr/share/metainfo/%s\n", application_id);
                 /* Use ximion's appstreamcli to make sure that desktop file and appdata match together */
@@ -901,8 +906,8 @@ main (int argc, char *argv[])
         } else {
             if (!fetch_runtime(arch, &size, &data, verbose)) {
                 die(
-                    "Failed to download runtime file, please download the runtime manually from"
-                    "https://github.com/AppImage/type2-runtime/releases and pass it to appimagetool with"
+                    "Failed to download runtime file, please download the runtime manually from "
+                    "https://github.com/AppImage/type2-runtime/releases and pass it to appimagetool with "
                     "--runtime-file"
                 );
             }
