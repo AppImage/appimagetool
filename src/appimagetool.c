@@ -511,7 +511,7 @@ static GOptionEntry entries[] =
 {
     { "list", 'l', 0, G_OPTION_ARG_NONE, &list, "List files in SOURCE AppImage", NULL },
     { "updateinformation", 'u', 0, G_OPTION_ARG_STRING, &updateinformation, "Embed update information STRING; if zsyncmake is installed, generate zsync file", NULL },
-    { "guess", 'g', 0, G_OPTION_ARG_NONE, &guess_update_information, "Guess update information based on Travis CI or GitLab environment variables", NULL },
+    { "guess", 'g', 0, G_OPTION_ARG_NONE, &guess_update_information, "Guess update information based on GitHub or GitLab environment variables", NULL },
     { "version", 0, 0, G_OPTION_ARG_NONE, &showVersionOnly, "Show version number", NULL },
     { "verbose", 'v', 0, G_OPTION_ARG_NONE, &verbose, "Produce verbose output", NULL },
     { "sign", 's', 0, G_OPTION_ARG_NONE, &sign, "Sign with gpg[2]", NULL },
@@ -543,9 +543,33 @@ main (int argc, char *argv[])
     travis_tag = getenv("TRAVIS_TAG");
     char* travis_pull_request;
     travis_pull_request = getenv("TRAVIS_PULL_REQUEST");
+
+    /* Parse GitHub Actions environment variables.
+     * https://docs.github.com/en/actions/learn-github-actions/variables
+     * GITHUB_REPOSITORY: The owner and repository name. For example, octocat/Hello-World.
+     * GITHUB_REPOSITORY_OWNER: The repository owner's name. For example, octocat.
+     */
+
     /* https://github.com/probonopd/uploadtool */
     char* github_token;
     github_token = getenv("GITHUB_TOKEN");
+
+    // Construct the repository name from github_repository and github_repository_owner
+    // by removing the github_repository_owner from the beginning of github_repository
+    // and the slash that follows it
+    char* github_repository = getenv("GITHUB_REPOSITORY");
+    char* github_repository_owner = getenv("GITHUB_REPOSITORY_OWNER");
+    char* github_repository_name = NULL;
+    if (github_repository_owner != NULL && github_repository != NULL) {
+        char* owner_start = strstr(github_repository, github_repository_owner);
+        if (owner_start != NULL) {
+            owner_start += strlen(github_repository_owner);
+            // Skip the '/'
+            if (*owner_start == '/')
+                owner_start++;
+            github_repository_name = owner_start;
+        }
+    }
 
     /* Parse GitLab CI environment variables.
      * https://docs.gitlab.com/ee/ci/variables/#predefined-variables-environment-variables
@@ -835,7 +859,8 @@ main (int argc, char *argv[])
                 fprintf (stderr, "WARNING: AppStream upstream metadata is missing, please consider creating it\n");
                 fprintf (stderr, "         in usr/share/metainfo/%s\n", application_id);
                 fprintf (stderr, "         Please see https://www.freedesktop.org/software/appstream/docs/chap-Quickstart.html#sect-Quickstart-DesktopApps\n");
-                fprintf (stderr, "         for more information or use the generator at http://output.jsbin.com/qoqukof.\n");
+                fprintf (stderr, "         for more information or use the generator at\n");
+                fprintf (stderr, "         https://docs.appimage.org/packaging-guide/optional/appstream.html#using-the-appstream-generator\n");
             } else {
                 fprintf (stderr, "AppStream upstream metadata found in usr/share/metainfo/%s\n", application_id);
                 /* Use ximion's appstreamcli to make sure that desktop file and appdata match together */
@@ -915,10 +940,32 @@ main (int argc, char *argv[])
             exit(1);
         }
         
-        /* If the user has not provided update information but we know this is a Travis CI build,
-         * then fill in update information based on TRAVIS_REPO_SLUG */
+        /* If the user has not provided update information but we know this is a CI build,
+         * then fill in update information based on well-known CI environment variables */
         if(guess_update_information){
-            if(travis_repo_slug){
+
+            if(github_repository_name){
+                if(!github_token) {
+                    printf("Will not guess update information since $GITHUB_TOKEN is missing\n");
+                } else {
+                    gchar *zsyncmake_path = g_find_program_in_path ("zsyncmake");
+                    if(zsyncmake_path){
+                        char buf[1024];
+                        // gh-releases-zsync|probono|AppImages|latest|Subsurface-*x86_64.AppImage.zsync
+                        int ret = snprintf(buf, "gh-releases-zsync|%s|%s|latest|%s*-%s.AppImage.zsync", github_repository_owner, github_repository_name, app_name_for_filename, arch);
+                        if (ret < 0) {
+                            die("snprintf error");
+                        } else if (ret >= sizeof(buf)) {
+                            die("snprintf buffer overflow");
+                        }
+                        updateinformation = buf;
+                        printf("Guessing update information based on $GITHUB_REPOSITORY=%s\n", github_repository);
+                        printf("%s\n", updateinformation);
+                    } else {
+                        printf("Will not guess update information since zsyncmake is missing\n");
+                    }
+                }
+            } else if(travis_repo_slug){
                 if(!github_token) {
                     printf("Will not guess update information since $GITHUB_TOKEN is missing,\n");
                     if(0 != strcmp(travis_pull_request, "false")){
@@ -940,7 +987,12 @@ main (int argc, char *argv[])
                                     channel = "latest";
                                 }
                             }
-                        sprintf(buf, "gh-releases-zsync|%s|%s|%s|%s*-%s.AppImage.zsync", parts[0], parts[1], channel, app_name_for_filename, arch);
+                        int ret = snprintf(buf, sizeof(buf), "gh-releases-zsync|%s|%s|%s|%s*-%s.AppImage.zsync", parts[0], parts[1], channel, app_name_for_filename, arch);
+                        if (ret < 0) {
+                            die("snprintf error");
+                        } else if (ret >= sizeof(buf)) {
+                            die("snprintf buffer overflow");
+                        }
                         updateinformation = buf;
                         printf("Guessing update information based on $TRAVIS_TAG=%s and $TRAVIS_REPO_SLUG=%s\n", travis_tag, travis_repo_slug);
                         printf("%s\n", updateinformation);
@@ -953,7 +1005,12 @@ main (int argc, char *argv[])
                 gchar *zsyncmake_path = g_find_program_in_path ("zsyncmake");
                 if(zsyncmake_path){
                     char buf[1024];
-                    sprintf(buf, "zsync|%s/-/jobs/artifacts/%s/raw/%s-%s.AppImage.zsync?job=%s", CI_PROJECT_URL, CI_COMMIT_REF_NAME, app_name_for_filename, arch, CI_JOB_NAME);
+                    int ret = snprintf(buf, sizeof(buf), "zsync|%s/-/jobs/artifacts/%s/raw/%s-%s.AppImage.zsync?job=%s", CI_PROJECT_URL, CI_COMMIT_REF_NAME, app_name_for_filename, arch, CI_JOB_NAME);
+                    if (ret < 0) {
+                        die("snprintf error");
+                    } else if (ret >= sizeof(buf)) {
+                        die("snprintf buffer overflow");
+                    }
                     updateinformation = buf;
                     printf("Guessing update information based on $CI_COMMIT_REF_NAME=%s and $CI_JOB_NAME=%s\n", CI_COMMIT_REF_NAME, CI_JOB_NAME);
                     printf("%s\n", updateinformation);
