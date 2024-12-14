@@ -188,8 +188,11 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
             args[i++] = exclude_file;
         }
 
-        args[i++] = "-mkfs-time";
-        args[i++] = "0";
+        // don't override time if user sets it
+        if (!getenv("SOURCE_DATE_EPOCH")) {
+            args[i++] = "-mkfs-time";
+            args[i++] = "0";
+        }
 
         for (guint sqfs_opts_idx = 0; sqfs_opts_idx < sqfs_opts_len; ++sqfs_opts_idx) {
             args[i++] = sqfs_opts[sqfs_opts_idx];
