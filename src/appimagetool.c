@@ -949,7 +949,7 @@ main (int argc, char *argv[])
                     if(zsyncmake_path){
                         char buf[1024];
                         // gh-releases-zsync|probono|AppImages|latest|Subsurface-*x86_64.AppImage.zsync
-                        int ret = snprintf(buf, "gh-releases-zsync|%s|%s|latest|%s*-%s.AppImage.zsync", github_repository_owner, github_repository_name, app_name_for_filename, arch);
+                        int ret = snprintf(buf, sizeof(buf), "gh-releases-zsync|%s|%s|latest|%s*-%s.AppImage.zsync", github_repository_owner, github_repository_name, app_name_for_filename, arch);
                         if (ret < 0) {
                             die("snprintf error");
                         } else if (ret >= sizeof(buf)) {
