@@ -913,7 +913,7 @@ main (int argc, char *argv[])
             }
         }
         if (verbose)
-            printf("Size of the embedded runtime: %d bytes\n", size);
+            printf("Size of the embedded runtime: %zu bytes\n", size);
         
         int result = sfs_mksquashfs(source, destination, size);
         if(result != 0)
