@@ -611,7 +611,7 @@ main (int argc, char *argv[])
     }
 
     fprintf(
-        stderr,
+        showVersionOnly ? stdout : stderr,
         "appimagetool, %s (git version %s), build %s built on %s\n",
         RELEASE_NAME, GIT_VERSION, BUILD_NUMBER, BUILD_DATE
     );
