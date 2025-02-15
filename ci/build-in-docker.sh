@@ -64,7 +64,7 @@ apk add bash git gcc g++ cmake make file wget \
     glib-static libassuan-static zlib-static libgpg-error-static \
     curl-dev curl-static nghttp2-static libidn2-static openssl-libs-static brotli-static c-ares-static libunistring-static \
     glib-static glib-dev autoconf automake meson \
-    libpsl-dev libpsl-static
+    libpsl-dev libpsl-static patch
 
 # libcurl's pkg-config scripts are broken. everywhere, everytime.
 # these additional flags have been collected from all the .pc files whose libs are mentioned as -l<lib> in Libs.private
