@@ -2,12 +2,13 @@
 
 set -euxo pipefail
 
-if [[ "${1:-}" == "" ]]; then
-    echo "Usage: $0 <version>"
+if [[ "${2:-}" == "" ]]; then
+    echo "Usage: $0 <version> <hash>"
     exit 2
 fi
 
 version="$1"
+hash="$2"
 
 build_dir="$(mktemp -d -t zsyncmake-build-XXXXXX)"
 
@@ -20,8 +21,11 @@ trap cleanup EXIT
 
 pushd "$build_dir"
 
-wget http://zsync.moria.org.uk/download/zsync-"$version".tar.bz2 -q
-tar xf zsync-*.tar.bz2
+# the original zsync homepage has been shut down apparently, but we can fetch the source code from most distros
+wget http://deb.debian.org/debian/pool/main/z/zsync/zsync_"$version".orig.tar.bz2
+echo "${hash}  zsync_${version}.orig.tar.bz2" | sha256sum -c
+
+tar xf zsync_"$version"*.tar.bz2
 
 cd zsync-*/
 
