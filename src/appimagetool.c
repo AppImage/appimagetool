@@ -1129,7 +1129,8 @@ main (int argc, char *argv[])
                 fprintf(stderr, "zsyncmake is available and updateinformation is provided, "
                                 "hence generating zsync file\n");
 
-                const gchar* const zsyncmake_command[] = {zsyncmake_path, destination, "-u", basename(destination), NULL};
+                // notice for Alpine builds: Alpine's getopt does not parse flags passed after the first parameter, order matters here
+                const gchar* const zsyncmake_command[] = {zsyncmake_path, "-u", basename(destination), destination, NULL};
 
                 if (verbose) {
                     fprintf(stderr, "Running zsyncmake process: ");
