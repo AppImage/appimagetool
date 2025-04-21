@@ -81,15 +81,13 @@ pkg_check_modules(libgio REQUIRED gio-2.0 IMPORTED_TARGET)
 pkg_check_modules(libcurl REQUIRED libcurl IMPORTED_TARGET)
 
 # Alpine Linux does not ship an argp.h as part of the standard compiler toolchain
-unset(ARGP_H_FOUND CACHE)
-include(CheckCSourceCompiles)
-check_c_source_compiles("
-    #include <argp.h>
-    int main() { return 0; }
-" ARGP_H_FOUND)
+# Non-Linux OSes like FreeBSD do not have this header too
+find_file(ARGP_H argp.h HINTS /usr/include /usr/local/include)
 
-if(NOT ARGP_H_FOUND)
+if(NOT ARGP_H)
     message(FATAL_ERROR "argp.h not installed, if on Alpine Linux please apk add argp-standalone")
 endif()
+
+get_filename_component(ARGP_INCLUDE_DIR "${ARGP_H}" DIRECTORY)
 
 add_subdirectory(src)

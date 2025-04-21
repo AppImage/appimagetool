@@ -28,6 +28,7 @@ target_compile_definitions(appimagetool
 
 target_include_directories(appimagetool
     PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/>
+           $<BUILD_INTERFACE:${ARGP_INCLUDE_DIR}>
     INTERFACE $<INSTALL_INTERFACE:include/>
 )
 
