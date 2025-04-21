@@ -156,7 +156,7 @@ private:
                 foundFile = true;
             } else {
                 if (verbose) {
-                    std::cerr << "libcurl's default CA certificate bundle file " << caInfo << " was not found on this system, nulling" << std::endl;
+                    std::cerr << "libcurl's default CA certificate bundle file " << (caInfo ? caInfo : "") << " was not found on this system, nulling" << std::endl;
                 }
                 setOption(CURLOPT_CAINFO, "");
             }
@@ -172,7 +172,7 @@ private:
                 foundDir = true;
             } else {
                 if (verbose) {
-                    std::cerr << "libcurl's default CA certificate bundle directory " << caPath << " was not found on this system, nulling" << std::endl;
+                    std::cerr << "libcurl's default CA certificate bundle directory " << (caPath ? caPath : "") << " was not found on this system, nulling" << std::endl;
                 }
                 setOption(CURLOPT_CAPATH, "");
             }
