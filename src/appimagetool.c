@@ -724,7 +724,7 @@ main (int argc, char *argv[])
         if(g_find_program_in_path ("desktop-file-validate")) {
             if(validate_desktop_file(desktop_file) != 0){
                 fprintf(stderr, "ERROR: Desktop file contains errors. Please fix them. Please see\n");
-                fprintf(stderr, "       https://standards.freedesktop.org/desktop-entry-spec/1.0/n");
+                fprintf(stderr, "       https://specifications.freedesktop.org/desktop-entry-spec/latest/index.html");
                 die("       for more information.");
             }
         }
