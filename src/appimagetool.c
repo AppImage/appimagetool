@@ -195,7 +195,11 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
         }
 
         for (guint sqfs_opts_idx = 0; sqfs_opts_idx < sqfs_opts_len; ++sqfs_opts_idx) {
-            args[i++] = sqfs_opts[sqfs_opts_idx];
+            gchar** split_opts = g_strsplit(sqfs_opts[sqfs_opts_idx], " ", 0);
+            guint j = 0;
+            while (split_opts[j] != NULL) {
+                args[i++] = split_opts[j++];
+            }
         }
 
         args[i++] = 0;
