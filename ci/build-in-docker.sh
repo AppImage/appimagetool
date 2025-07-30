@@ -30,7 +30,7 @@ esac
 # libassuan-static is supported only from 3.19 onwards
 image=alpine:3.19
 
-repo_root="$(readlink -f "$(dirname "${BASH_SOURCE[0]}")"/..)"
+repo_root="$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")"/..)"
 
 # run the build with the current user to
 #   a) make sure root is not required for builds
