@@ -83,6 +83,7 @@ gchar *exclude_file = NULL;
 gchar *runtime_file = NULL;
 gchar *sign_key = NULL;
 gchar *pathToMksquashfs = NULL;
+gchar *file_url;
 
 // #####################################################################
 
@@ -521,6 +522,7 @@ static GOptionEntry entries[] =
     { "exclude-file", 0, 0, G_OPTION_ARG_STRING, &exclude_file, _exclude_file_desc, NULL },
     { "runtime-file", 0, 0, G_OPTION_ARG_STRING, &runtime_file, "Runtime file to use", NULL },
     { "sign-key", 0, 0, G_OPTION_ARG_STRING, &sign_key, "Key ID to use for gpg[2] signatures", NULL},
+    { "file-url", 0, 0, G_OPTION_ARG_STRING, &file_url, "URL of the AppImage file, can be relative to zsync, or absolute/full", NULL },
     { G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_FILENAME_ARRAY, &remaining_args, NULL, NULL },
     { 0,0,0,0,0,0,0 }
 };
@@ -609,6 +611,9 @@ main (int argc, char *argv[])
         fprintf(stderr, "Option parsing failed: %s\n", error->message);
         exit(1);
     }
+
+    if (file_url && strlen(file_url) == 0) 
+        die("--file-url argument is empty");
 
     fprintf(
         showVersionOnly ? stdout : stderr,
@@ -1130,7 +1135,8 @@ main (int argc, char *argv[])
                                 "hence generating zsync file\n");
 
                 // notice for Alpine builds: Alpine's getopt does not parse flags passed after the first parameter, order matters here
-                const gchar* const zsyncmake_command[] = {zsyncmake_path, "-u", basename(destination), destination, NULL};
+                const gchar* zsync_url_arg = file_url ? file_url : basename(destination);
+                const gchar* const zsyncmake_command[] = {zsyncmake_path, "-u", zsync_url_arg, destination, NULL};
 
                 if (verbose) {
                     fprintf(stderr, "Running zsyncmake process: ");
