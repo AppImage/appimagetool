@@ -17,7 +17,7 @@ cleanup () {
 trap cleanup EXIT
 
 # store repo root as variable
-repo_root="$(readlink -f "$(dirname "${BASH_SOURCE[0]}")"/..)"
+repo_root="$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")"/..)"
 old_cwd="$(readlink -f "$PWD")"
 
 pushd "$build_dir"
