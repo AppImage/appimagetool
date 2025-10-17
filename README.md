@@ -39,7 +39,6 @@ Some of the parameters above can alternatively be specified as environment varia
 
 - `ARCH`: Needs to be set whenever appimagetool cannot automatically determine the architecture of the binaries inside the AppDir to choose a suitable runtime (e.g., when binaries for multiple architectures or just shell scripts are contained in there).
 - `APPIMAGETOOL_APP_NAME`: If no destination is set by the user, appimagetool automatically generates a suitable output filename, using the root desktop entry's `Name` field. With this environment variable, this value can be set explicitly by the user.
-- `APPIMAGETOOL_FORCE_SIGN`: By default, if signing fails, appimagetool just logs a warning but will not abort immediately. If this environment variable is set, appimagetool exits with a non-zero return code.
 - `APPIMAGETOOL_SIGN_PASSPHRASE`: If the `--sign-key` is encrypted and requires a passphrase to be used for signing (and, for some reason, GnuPG cannot be used interactively, e.g., in a CI environment), this environment variable can be used to safely pass the key.
 - `VERSION`: This value will be inserted by appimagetool into the root desktop file and (if the destination parameter is not provided by the user) in the output filename.
 
