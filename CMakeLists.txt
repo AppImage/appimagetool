@@ -37,6 +37,22 @@ execute_process(
 # by default, static builds are off allow for working on this tool on any distribution
 option(BUILD_STATIC OFF)
 
+# Optional sanitizer support for testing and debugging
+# Enable with -DENABLE_SANITIZERS=ON
+# Note: Cannot be used with static builds
+option(ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+
+if(ENABLE_SANITIZERS)
+    if(BUILD_STATIC)
+        message(FATAL_ERROR "Sanitizers cannot be used with static builds")
+    endif()
+    
+    message(STATUS "Enabling AddressSanitizer and UndefinedBehaviorSanitizer")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address,undefined -fno-omit-frame-pointer")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address,undefined -fno-omit-frame-pointer")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address,undefined")
+endif()
+
 if(BUILD_STATIC)
     # since this project does not expose any libraries, we can safely set the linker flag globally
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -no-pie")

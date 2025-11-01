@@ -56,6 +56,29 @@ If you are on an Intel machine and would like to cross-compile for ARM:
 * For 64 bit ARM, run `ARCH=aarch64 bash ./ci/build-in-docker.sh`
 * For 32 bit ARM, run `ARCH=armhf bash ./ci/build-in-docker.sh`
 
+### Development Builds
+
+For local development with sanitizers enabled:
+
+```bash
+mkdir build && cd build
+cmake .. -DENABLE_SANITIZERS=ON
+make
+```
+
+Note: Sanitizer builds cannot be combined with static builds and are for development/testing only.
+
+## Security
+
+This project includes several security and supply chain improvements:
+
+- **Compiler Warnings**: Built with `-Wall -Wextra -Wconversion -Werror` to catch potential bugs
+- **Hash Verification**: All downloaded dependencies are verified with SHA256 hashes
+- **Build Attestation**: GitHub releases include cryptographically signed build provenance
+- **Sanitizer Support**: Optional ASAN/UBSAN support for development testing
+
+For more details, see [SECURITY.md](SECURITY.md).
+
 ## Changelog
 
 * Unlike previous versions of this tool provided in the [AppImageKit](https://github.com/AppImage/AppImageKit/) repository, this version downloads the latest AppImage runtime (which will become part of the AppImage) from https://github.com/AppImage/type2-runtime/releases. If you do not like this (or if your build system does not have Internet access), you can supply a locally downloaded AppImage runtime using the `--runtime-file` parameter instead.
