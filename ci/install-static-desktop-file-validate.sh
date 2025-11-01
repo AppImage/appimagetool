@@ -26,7 +26,7 @@ wget -c "https://gitlab.freedesktop.org/xdg/desktop-file-utils/-/archive/"$versi
 
 # Verify tarball hash for supply chain security
 # Hash for version 0.28
-expected_hash="30355df75de31a5c5a2e87fab197fcd77c0a8d1317e86e0dfe515eb0f94f29f8"
+expected_hash="379ecbc1354d0c052188bdf5dbbc4a020088ad3f9cab54487a5852d1743a4f3b"
 if [[ "$version" == "0.28" ]]; then
     echo "Verifying desktop-file-utils tarball hash..."
     echo "$expected_hash  desktop-file-utils-$version.tar.gz" | sha256sum -c || {

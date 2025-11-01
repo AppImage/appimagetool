@@ -34,7 +34,7 @@ External build tools are also verified:
 
 - **mksquashfs 4.6.1**: SHA256 hash `9c4974e07c61547dae14af4ed1f358b7d04618ae194e54d6be72ee126f0d2f53`
 - **zsyncmake 0.6.2**: SHA256 hash `0b9d53433387aa4f04634a6c63a5efa8203070f2298af72a705f9be3dda65af2` (already verified)
-- **desktop-file-validate 0.28**: SHA256 hash `30355df75de31a5c5a2e87fab197fcd77c0a8d1317e86e0dfe515eb0f94f29f8`
+- **desktop-file-validate 0.28**: SHA256 hash `379ecbc1354d0c052188bdf5dbbc4a020088ad3f9cab54487a5852d1743a4f3b`
 
 ## Build Provenance Attestation
 
