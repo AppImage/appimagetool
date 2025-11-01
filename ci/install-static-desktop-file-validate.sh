@@ -23,6 +23,23 @@ pushd "$build_dir"
 # apk add glib-static glib-dev autoconf automake # Moved to build-in-docker.sh
 
 wget -c "https://gitlab.freedesktop.org/xdg/desktop-file-utils/-/archive/"$version"/desktop-file-utils-"$version".tar.gz"
+
+# Verify tarball hash for supply chain security
+# Hash for version 0.28
+expected_hash="30355df75de31a5c5a2e87fab197fcd77c0a8d1317e86e0dfe515eb0f94f29f8"
+if [[ "$version" == "0.28" ]]; then
+    echo "Verifying desktop-file-utils tarball hash..."
+    echo "$expected_hash  desktop-file-utils-$version.tar.gz" | sha256sum -c || {
+        echo "ERROR: desktop-file-utils tarball hash verification failed"
+        echo "Expected: $expected_hash"
+        echo "Got:      $(sha256sum desktop-file-utils-$version.tar.gz | awk '{print $1}')"
+        exit 1
+    }
+    echo "Tarball hash verified successfully"
+else
+    echo "Warning: No hash verification available for desktop-file-utils version $version"
+fi
+
 tar xf desktop-file-utils-*.tar.gz
 cd desktop-file-utils-*/
 
