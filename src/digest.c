@@ -68,7 +68,7 @@ bool appimage_type2_digest_md5(const char* path, char* digest) {
             // if bytes_left is now < 0, the section exceeds the current chunk
             // this amount of bytes needs to be skipped in the future sections
             if (bytes_left_this_chunk < 0) {
-                bytes_skip_following_chunks = (size_t) (-1 * bytes_left_this_chunk);
+                bytes_skip_following_chunks = (ssize_t) (-1 * bytes_left_this_chunk);
                 bytes_left_this_chunk = 0;
             }
 
@@ -88,7 +88,7 @@ bool appimage_type2_digest_md5(const char* path, char* digest) {
             // if bytes_left is now < 0, the section exceeds the current chunk
             // this amount of bytes needs to be skipped in the future sections
             if (bytes_left_this_chunk < 0) {
-                bytes_skip_following_chunks = (size_t) (-1 * bytes_left_this_chunk);
+                bytes_skip_following_chunks = (ssize_t) (-1 * bytes_left_this_chunk);
                 bytes_left_this_chunk = 0;
             }
 
@@ -108,7 +108,7 @@ bool appimage_type2_digest_md5(const char* path, char* digest) {
             // if bytes_left is now < 0, the section exceeds the current chunk
             // this amount of bytes needs to be skipped in the future sections
             if (bytes_left_this_chunk < 0) {
-                bytes_skip_following_chunks = (size_t) (-1 * bytes_left_this_chunk);
+                bytes_skip_following_chunks = (ssize_t) (-1 * bytes_left_this_chunk);
                 bytes_left_this_chunk = 0;
             }
 

@@ -213,7 +213,7 @@ bool embed_data_in_elf_section(const char* filename, const char* elf_section, gp
     }
 
     if (verbose) {
-        fprintf(stderr, "[sign] data size: %lu\n", data_size);
+        fprintf(stderr, "[sign] data size: %lld\n", (long long)data_size);
     }
 
     // rewind so we can later read the data
