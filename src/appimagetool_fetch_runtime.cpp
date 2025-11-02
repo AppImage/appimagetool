@@ -281,15 +281,15 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
 
         auto runtimeData = response.data();
 
-        if (runtimeData.size() != response.contentLength()) {
+        if (runtimeData.size() != static_cast<std::vector<char>::size_type>(response.contentLength())) {
             std::cerr << "Error: downloaded data size of " << runtimeData.size()
                       << " does not match content-length of " << response.contentLength() << std::endl;
             return false;
         }
 
-        *size = response.contentLength();
+        *size = static_cast<size_t>(response.contentLength());
 
-        *buffer = (char *) calloc(response.contentLength() + 1, 1);
+        *buffer = (char *) calloc(static_cast<size_t>(response.contentLength()) + 1, 1);
 
         if (*buffer == nullptr) {
             std::cerr << "Failed to allocate buffer" << std::endl;

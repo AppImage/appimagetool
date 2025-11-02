@@ -123,7 +123,7 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
 
         guint sqfs_opts_len = sqfs_opts ? g_strv_length(sqfs_opts) : 0;
 
-        int max_num_args = sqfs_opts_len + 22;
+        int max_num_args = (int)sqfs_opts_len + 22;
         char* args[max_num_args];
 
         int i = 0;
@@ -270,9 +270,9 @@ static void replacestr(char *line, const char *search, const char *replace)
     if ((sp = strstr(line, search)) == NULL) {
         return;
     }
-    int search_len = strlen(search);
-    int replace_len = strlen(replace);
-    int tail_len = strlen(sp+search_len);
+    size_t search_len = strlen(search);
+    size_t replace_len = strlen(replace);
+    size_t tail_len = strlen(sp+search_len);
     
     memmove(sp+replace_len,sp+search_len,tail_len+1);
     memcpy(sp, replace, replace_len);
@@ -304,6 +304,8 @@ gchar* archToName(fARCH arch) {
         case fARCH_x86_64:
             return "x86_64";
     }
+    // Should never reach here if all enum values are handled
+    return "unknown";
 }
 
 gchar* getArchName(bool* archs) {
@@ -464,10 +466,10 @@ bool readFile(char* filename, size_t* size, char** buffer) {
     long fsize = ftell(f);
     fseek(f, 0, SEEK_SET);
 
-    char *indata = malloc(fsize);
-    fread(indata, fsize, 1, f);
+    char *indata = malloc((size_t)fsize);
+    fread(indata, (size_t)fsize, 1, f);
     fclose(f);
-    *size = (int)fsize;
+    *size = (size_t)fsize;
     *buffer = indata; 
     return TRUE;
 }
@@ -694,7 +696,11 @@ main (int argc, char *argv[])
                     g_spawn_command_line_sync(command_line, &out, NULL, &exit_status, &error);
 
                     // g_spawn_command_line_sync might have set error already, in that case we don't want to overwrite
+#if GLIB_CHECK_VERSION(2, 70, 0)
+                    if (error != NULL || !g_spawn_check_wait_status(exit_status, &error)) {
+#else
                     if (error != NULL || !g_spawn_check_exit_status(exit_status, &error)) {
+#endif
                         if (error == NULL) {
                             g_printerr("Failed to run 'git rev-parse --short HEAD, but failed to interpret GLib error state: %d\n", exit_status);
                         } else {
@@ -776,7 +782,8 @@ main (int argc, char *argv[])
             const char* const env_app_name = getenv("APPIMAGETOOL_APP_NAME");
             if (env_app_name != NULL) {
                 fprintf(stderr, "Using user-specified app name: %s\n", env_app_name);
-                strncpy(app_name_for_filename, env_app_name, PATH_MAX);
+                strncpy(app_name_for_filename, env_app_name, PATH_MAX - 1);
+                app_name_for_filename[PATH_MAX - 1] = '\0';
             } else {
                 const gchar* const desktop_file_app_name = get_desktop_entry(kf, "Name");
                 sprintf(app_name_for_filename, "%s", desktop_file_app_name);
@@ -797,9 +804,9 @@ main (int argc, char *argv[])
 
             // if $VERSION is specified, we embed it into the filename
             if (version_env != NULL) {
-                sprintf(dest_path, "%s-%s-%s.AppImage", app_name_for_filename, version_env, arch);
+                snprintf(dest_path, sizeof(dest_path), "%s-%s-%s.AppImage", app_name_for_filename, version_env, arch);
             } else {
-                sprintf(dest_path, "%s-%s.AppImage", app_name_for_filename, arch);
+                snprintf(dest_path, sizeof(dest_path), "%s-%s.AppImage", app_name_for_filename, arch);
             }
 
             destination = strdup(dest_path);
@@ -922,9 +929,9 @@ main (int argc, char *argv[])
             }
         }
         if (verbose)
-            printf("Size of the embedded runtime: %d bytes\n", size);
-        
-        int result = sfs_mksquashfs(source, destination, size);
+            printf("Size of the embedded runtime: %zu bytes\n", size);
+
+        int result = sfs_mksquashfs(source, destination, (int)size);
         if(result != 0)
             die("sfs_mksquashfs error");
         
@@ -961,7 +968,7 @@ main (int argc, char *argv[])
                         int ret = snprintf(buf, sizeof(buf), "gh-releases-zsync|%s|%s|latest|%s*-%s.AppImage.zsync", github_repository_owner, github_repository_name, app_name_for_filename, arch);
                         if (ret < 0) {
                             die("snprintf error");
-                        } else if (ret >= sizeof(buf)) {
+                        } else if ((size_t)ret >= sizeof(buf)) {
                             die("snprintf buffer overflow");
                         }
                         updateinformation = buf;
@@ -996,7 +1003,7 @@ main (int argc, char *argv[])
                         int ret = snprintf(buf, sizeof(buf), "gh-releases-zsync|%s|%s|%s|%s*-%s.AppImage.zsync", parts[0], parts[1], channel, app_name_for_filename, arch);
                         if (ret < 0) {
                             die("snprintf error");
-                        } else if (ret >= sizeof(buf)) {
+                        } else if ((size_t)ret >= sizeof(buf)) {
                             die("snprintf buffer overflow");
                         }
                         updateinformation = buf;
@@ -1014,7 +1021,7 @@ main (int argc, char *argv[])
                     int ret = snprintf(buf, sizeof(buf), "zsync|%s/-/jobs/artifacts/%s/raw/%s-%s.AppImage.zsync?job=%s", CI_PROJECT_URL, CI_COMMIT_REF_NAME, app_name_for_filename, arch, CI_JOB_NAME);
                     if (ret < 0) {
                         die("snprintf error");
-                    } else if (ret >= sizeof(buf)) {
+                    } else if ((size_t)ret >= sizeof(buf)) {
                         die("snprintf buffer overflow");
                     }
                     updateinformation = buf;
@@ -1061,7 +1068,7 @@ main (int argc, char *argv[])
                 FILE *fpdst2 = fopen(destination, "r+");
                 if (fpdst2 == NULL)
                     die("Not able to open the destination file for writing, aborting");
-                fseek(fpdst2, ui_offset, SEEK_SET);
+                fseek(fpdst2, (long)ui_offset, SEEK_SET);
                 // fseek(fpdst2, ui_offset, SEEK_SET);
                 // fwrite(0x00, 1, 1024, fpdst); // FIXME: Segfaults; why?
                 // fseek(fpdst, ui_offset, SEEK_SET);
@@ -1107,7 +1114,7 @@ main (int argc, char *argv[])
                 die("Failed to open AppImage for updating");
             }
 
-            if (fseek(destinationfp, digest_md5_offset, SEEK_SET) != 0) {
+            if (fseek(destinationfp, (long)digest_md5_offset, SEEK_SET) != 0) {
                 fclose(destinationfp);
                 die("Failed to embed MD5 digest: could not seek to section offset");
             }
@@ -1141,7 +1148,7 @@ main (int argc, char *argv[])
 
                 if (verbose) {
                     fprintf(stderr, "Running zsyncmake process: ");
-                    for (gint j = 0; j < (sizeof(zsyncmake_command) / sizeof(char*) - 1); ++j) {
+                    for (gint j = 0; j < (gint)(sizeof(zsyncmake_command) / sizeof(char*) - 1); ++j) {
                         fprintf(stderr, "'%s' ", zsyncmake_command[j]);
                     }
                     fprintf(stderr, "\n");

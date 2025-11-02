@@ -20,6 +20,7 @@ char* get_passphrase_from_environment() {
 }
 
 gpgme_error_t gpgme_passphrase_callback(void* hook, const char* uid_hint, const char* passphrase_info, int prev_was_valid, int fd) {
+    (void) hook;
     (void) passphrase_info;
     (void) prev_was_valid;
 
@@ -45,6 +46,7 @@ gpgme_error_t gpgme_passphrase_callback(void* hook, const char* uid_hint, const 
 }
 
 gpgme_error_t gpgme_status_callback(void* hook, const char* keyword, const char* args) {
+    (void) hook;
     assert(hook == gpgme_hook);
 
     fprintf(stderr, "[gpgme] %s: %s\n", keyword, args);
@@ -221,7 +223,7 @@ bool embed_data_in_elf_section(const char* filename, const char* elf_section, gp
         return false;
     }
 
-    if (data_size > key_section_length) {
+    if ((unsigned long)data_size > key_section_length) {
         fprintf(stderr, "[sign] cannot embed key in AppImage: size exceeds reserved ELF section size\n");
         gpg_release_resources();
         return false;
@@ -231,10 +233,10 @@ bool embed_data_in_elf_section(const char* filename, const char* elf_section, gp
     char data_buffer[data_size];
 
     size_t total_bytes_read = 0;
-    size_t bytes_read = 0;
+    ssize_t bytes_read = 0;
 
     for (;;) {
-        bytes_read = gpgme_data_read(data, data_buffer, data_size);
+        bytes_read = gpgme_data_read(data, data_buffer + total_bytes_read, (size_t)(data_size - (off_t)total_bytes_read));
 
         // EOF
         if (bytes_read == 0) {
@@ -248,15 +250,15 @@ bool embed_data_in_elf_section(const char* filename, const char* elf_section, gp
             return false;
         }
 
-        total_bytes_read += bytes_read;
+        total_bytes_read += (size_t)bytes_read;
     }
 
-    if (total_bytes_read != data_size) {
+    if ((off_t)total_bytes_read != data_size) {
         fprintf(
             stderr,
-            "[sign] failed to read entire data from data object (%lu != %lu)\n",
+            "[sign] failed to read entire data from data object (%zu != %lld)\n",
             total_bytes_read,
-            data_size
+            (long long)data_size
         );
         gpg_release_resources();
         return false;
@@ -278,7 +280,7 @@ bool embed_data_in_elf_section(const char* filename, const char* elf_section, gp
     }
 
     // write at once
-    if (fwrite(data_buffer, sizeof(char), data_size, destinationfp) != data_size) {
+    if (fwrite(data_buffer, sizeof(char), (size_t)data_size, destinationfp) != (size_t)data_size) {
         fprintf(stderr, "[sign] failed to write signature to AppImage file\n");
         gpg_release_resources();
         fclose(destinationfp);

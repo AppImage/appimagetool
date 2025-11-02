@@ -47,17 +47,18 @@ static uint64_t file64_to_cpu(uint64_t val)
     return val;
 }
 
+__attribute__((unused))
 static off_t read_elf32(FILE* fd)
 {
     Elf32_Ehdr ehdr32;
     Elf32_Shdr shdr32;
     off_t last_shdr_offset;
-    ssize_t ret;
+    size_t ret;
     off_t  sht_end, last_section_end;
 
     fseeko(fd, 0, SEEK_SET);
     ret = fread(&ehdr32, 1, sizeof(ehdr32), fd);
-    if (ret < 0 || (size_t)ret != sizeof(ehdr32)) {
+    if (ret != sizeof(ehdr32)) {
         fprintf(stderr, "Read of ELF header from %s failed: %s\n",
                 fname, strerror(errno));
         return -1;
@@ -67,32 +68,33 @@ static off_t read_elf32(FILE* fd)
     ehdr.e_shentsize	= file16_to_cpu(ehdr32.e_shentsize);
     ehdr.e_shnum		= file16_to_cpu(ehdr32.e_shnum);
 
-    last_shdr_offset = ehdr.e_shoff + (ehdr.e_shentsize * (ehdr.e_shnum - 1));
+    last_shdr_offset = (off_t)(ehdr.e_shoff + ((uint64_t)ehdr.e_shentsize * (ehdr.e_shnum - 1)));
     fseeko(fd, last_shdr_offset, SEEK_SET);
     ret = fread(&shdr32, 1, sizeof(shdr32), fd);
-    if (ret < 0 || (size_t)ret != sizeof(shdr32)) {
+    if (ret != sizeof(shdr32)) {
         fprintf(stderr, "Read of ELF section header from %s failed: %s\n",
                 fname, strerror(errno));
         return -1;
     }
 
     /* ELF ends either with the table of section headers (SHT) or with a section. */
-    sht_end = ehdr.e_shoff + (ehdr.e_shentsize * ehdr.e_shnum);
-    last_section_end = file64_to_cpu(shdr32.sh_offset) + file64_to_cpu(shdr32.sh_size);
+    sht_end = (off_t)(ehdr.e_shoff + ((uint64_t)ehdr.e_shentsize * ehdr.e_shnum));
+    last_section_end = (off_t)(file64_to_cpu(shdr32.sh_offset) + file64_to_cpu(shdr32.sh_size));
     return sht_end > last_section_end ? sht_end : last_section_end;
 }
 
+__attribute__((unused))
 static off_t read_elf64(FILE* fd)
 {
     Elf64_Ehdr ehdr64;
     Elf64_Shdr shdr64;
     off_t last_shdr_offset;
-    off_t ret;
+    size_t ret;
     off_t sht_end, last_section_end;
 
     fseeko(fd, 0, SEEK_SET);
     ret = fread(&ehdr64, 1, sizeof(ehdr64), fd);
-    if (ret < 0 || (size_t)ret != sizeof(ehdr64)) {
+    if (ret != sizeof(ehdr64)) {
         fprintf(stderr, "Read of ELF header from %s failed: %s\n",
                 fname, strerror(errno));
         return -1;
@@ -102,18 +104,18 @@ static off_t read_elf64(FILE* fd)
     ehdr.e_shentsize	= file16_to_cpu(ehdr64.e_shentsize);
     ehdr.e_shnum		= file16_to_cpu(ehdr64.e_shnum);
 
-    last_shdr_offset = ehdr.e_shoff + (ehdr.e_shentsize * (ehdr.e_shnum - 1));
+    last_shdr_offset = (off_t)(ehdr.e_shoff + ((uint64_t)ehdr.e_shentsize * (ehdr.e_shnum - 1)));
     fseeko(fd, last_shdr_offset, SEEK_SET);
     ret = fread(&shdr64, 1, sizeof(shdr64), fd);
-    if (ret < 0 || ret != sizeof(shdr64)) {
+    if (ret != sizeof(shdr64)) {
         fprintf(stderr, "Read of ELF section header from %s failed: %s\n",
                 fname, strerror(errno));
         return -1;
     }
 
     /* ELF ends either with the table of section headers (SHT) or with a section. */
-    sht_end = ehdr.e_shoff + (ehdr.e_shentsize * ehdr.e_shnum);
-    last_section_end = file64_to_cpu(shdr64.sh_offset) + file64_to_cpu(shdr64.sh_size);
+    sht_end = (off_t)(ehdr.e_shoff + ((uint64_t)ehdr.e_shentsize * ehdr.e_shnum));
+    last_section_end = (off_t)(file64_to_cpu(shdr64.sh_offset) + file64_to_cpu(shdr64.sh_size));
     return sht_end > last_section_end ? sht_end : last_section_end;
 }
 
@@ -155,8 +157,8 @@ bool appimage_get_elf_section_offset_and_length(const char* fname, const char* s
         char* strTab = (char*) (data + shdr[elf->e_shstrndx].sh_offset);
         for (i = 0; i < elf->e_shnum; i++) {
             if (strcmp(&strTab[shdr[i].sh_name], section_name) == 0) {
-                *offset = shdr[i].sh_offset;
-                *length = shdr[i].sh_size;
+                *offset = (unsigned long)shdr[i].sh_offset;
+                *length = (unsigned long)shdr[i].sh_size;
             }
         }
     } else {
@@ -175,7 +177,7 @@ char* read_file_offset_length(const char* fname, unsigned long offset, unsigned 
         return NULL;
     }
 
-    fseek(f, offset, SEEK_SET);
+    fseek(f, (long)offset, SEEK_SET);
 
     char* buffer = calloc(length + 1, sizeof(char));
     fread(buffer, length, sizeof(char), f);
@@ -191,7 +193,7 @@ int appimage_print_hex(const char* fname, unsigned long offset, unsigned long le
         return 1;
     }
 
-    for (long long k = 0; k < length && data[k] != '\0'; k++) {
+    for (unsigned long k = 0; k < length && data[k] != '\0'; k++) {
         printf("%x", data[k]);
     }
 
