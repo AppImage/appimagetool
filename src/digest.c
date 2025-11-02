@@ -57,13 +57,13 @@ bool appimage_type2_digest_md5(const char* path, char* digest) {
         }
 
         // check whether there's a section in this chunk that we need to skip
-        if (digest_md5_offset != 0 && digest_md5_length != 0 && digest_md5_offset - current_position > 0 && digest_md5_offset - current_position < chunk_size) {
-            ssize_t begin_of_section = (digest_md5_offset - current_position) % chunk_size;
+        if (digest_md5_offset != 0 && digest_md5_length != 0 && (long)digest_md5_offset - current_position > 0 && (long)digest_md5_offset - current_position < chunk_size) {
+            ssize_t begin_of_section = ((long)digest_md5_offset - current_position) % chunk_size;
             // read chunk before section
             fread(buffer, sizeof(char), (size_t) begin_of_section, fp);
 
             bytes_left_this_chunk -= begin_of_section;
-            bytes_left_this_chunk -= digest_md5_length;
+            bytes_left_this_chunk -= (ssize_t)digest_md5_length;
 
             // if bytes_left is now < 0, the section exceeds the current chunk
             // this amount of bytes needs to be skipped in the future sections
@@ -77,13 +77,13 @@ bool appimage_type2_digest_md5(const char* path, char* digest) {
         }
 
         // check whether there's a section in this chunk that we need to skip
-        if (signature_offset != 0 && signature_length != 0 && signature_offset - current_position > 0 && signature_offset - current_position < chunk_size) {
-            ssize_t begin_of_section = (signature_offset - current_position) % chunk_size;
+        if (signature_offset != 0 && signature_length != 0 && (long)signature_offset - current_position > 0 && (long)signature_offset - current_position < chunk_size) {
+            ssize_t begin_of_section = ((long)signature_offset - current_position) % chunk_size;
             // read chunk before section
             fread(buffer, sizeof(char), (size_t) begin_of_section, fp);
 
             bytes_left_this_chunk -= begin_of_section;
-            bytes_left_this_chunk -= signature_length;
+            bytes_left_this_chunk -= (ssize_t)signature_length;
 
             // if bytes_left is now < 0, the section exceeds the current chunk
             // this amount of bytes needs to be skipped in the future sections
@@ -97,13 +97,13 @@ bool appimage_type2_digest_md5(const char* path, char* digest) {
         }
 
         // check whether there's a section in this chunk that we need to skip
-        if (sig_key_offset != 0 && sig_key_length != 0 && sig_key_offset - current_position > 0 && sig_key_offset - current_position < chunk_size) {
-            ssize_t begin_of_section = (sig_key_offset - current_position) % chunk_size;
+        if (sig_key_offset != 0 && sig_key_length != 0 && (long)sig_key_offset - current_position > 0 && (long)sig_key_offset - current_position < chunk_size) {
+            ssize_t begin_of_section = ((long)sig_key_offset - current_position) % chunk_size;
             // read chunk before section
             fread(buffer, sizeof(char), (size_t) begin_of_section, fp);
 
             bytes_left_this_chunk -= begin_of_section;
-            bytes_left_this_chunk -= sig_key_length;
+            bytes_left_this_chunk -= (ssize_t)sig_key_length;
 
             // if bytes_left is now < 0, the section exceeds the current chunk
             // this amount of bytes needs to be skipped in the future sections

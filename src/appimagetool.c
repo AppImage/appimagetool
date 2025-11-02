@@ -777,16 +777,17 @@ main (int argc, char *argv[])
         gchar* arch = getArchName(archs);
         fprintf(stderr, "Using architecture %s\n", arch);
 
-        char app_name_for_filename[PATH_MAX];
+        // Reserve space for version, arch, and ".AppImage" suffix (max ~50 chars)
+        char app_name_for_filename[PATH_MAX - 50];
         {
             const char* const env_app_name = getenv("APPIMAGETOOL_APP_NAME");
             if (env_app_name != NULL) {
                 fprintf(stderr, "Using user-specified app name: %s\n", env_app_name);
-                strncpy(app_name_for_filename, env_app_name, PATH_MAX - 1);
-                app_name_for_filename[PATH_MAX - 1] = '\0';
+                strncpy(app_name_for_filename, env_app_name, sizeof(app_name_for_filename) - 1);
+                app_name_for_filename[sizeof(app_name_for_filename) - 1] = '\0';
             } else {
                 const gchar* const desktop_file_app_name = get_desktop_entry(kf, "Name");
-                sprintf(app_name_for_filename, "%s", desktop_file_app_name);
+                snprintf(app_name_for_filename, sizeof(app_name_for_filename), "%s", desktop_file_app_name);
                 replacestr(app_name_for_filename, " ", "_");
 
                 if (verbose) {
