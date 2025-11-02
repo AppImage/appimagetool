@@ -28,7 +28,7 @@ echo "Verifying mksquashfs tarball hash..."
 echo "$expected_hash  $version.tar.gz" | sha256sum -c || {
     echo "ERROR: mksquashfs tarball hash verification failed"
     echo "Expected: $expected_hash"
-    echo "Got:      $(sha256sum $version.tar.gz | awk '{print $1}')"
+    echo "Got:      $(sha256sum $version.tar.gz)"
     exit 1
 }
 echo "Tarball hash verified successfully"

@@ -32,7 +32,7 @@ if [[ "$version" == "0.28" ]]; then
     echo "$expected_hash  desktop-file-utils-$version.tar.gz" | sha256sum -c || {
         echo "ERROR: desktop-file-utils tarball hash verification failed"
         echo "Expected: $expected_hash"
-        echo "Got:      $(sha256sum desktop-file-utils-$version.tar.gz | awk '{print $1}')"
+        echo "Got:      $(sha256sum desktop-file-utils-$version.tar.gz)"
         exit 1
     }
     echo "Tarball hash verified successfully"

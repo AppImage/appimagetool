@@ -13,28 +13,41 @@ The project is built with comprehensive compiler warnings enabled to catch poten
 
 These flags help ensure code quality and catch potential security issues at compile time.
 
+### Future Enhancements
+
+Additional static analysis tools that could be integrated:
+- **scan-build** (Clang Static Analyzer): Performs code flow analysis to detect issues like null pointer dereferences and use-after-free
+- **gcc -fanalyzer**: GCC's built-in static analyzer for similar code flow analysis
+
 ## Download Verification
 
-All external dependencies downloaded during the build process are verified using SHA256 hashes:
+External dependencies downloaded during the build process are verified where practical:
 
 ### Runtime Binaries
 
-The AppImage runtime binaries are downloaded from https://github.com/AppImage/type2-runtime/releases and verified with SHA256 hashes for each architecture:
+**Important Note**: The AppImage runtime binaries are downloaded from the `continuous` release at https://github.com/AppImage/type2-runtime/releases. 
 
-- `x86_64`: e70ffa9b69b211574d0917adc482dd66f25a0083427b5945783965d55b0b0a8b
-- `i686`: 3138b9f0c7a1872cfaf0e32db87229904524bb08922032887b298b22aed16ea8
-- `aarch64`: c1b2278cf0f42f5c603ab9a0fe43314ac2cbedf80b79a63eb77d3a79b42600c5
-- `armhf`: 6704e63466fa53394eb9326076f6b923177e9eb48840b85acf1c65a07e1fcf2b
+**Current Limitation**: Hash verification for continuous releases is problematic because:
+- Continuous releases are updated regularly
+- Hard-coded hashes would break when type2-runtime is updated
+- This creates a maintenance burden
 
-The build process prints the hash and size of the downloaded runtime for transparency.
+**Current Approach**: The build process prints the SHA256 hash and size of the downloaded runtime for transparency and audit purposes, but does not enforce hash verification.
+
+**Recommended Future Improvements**:
+1. Use GPG signature verification (download `.sig` files and verify with GPG)
+2. Switch to versioned/tagged releases instead of continuous
+3. Implement automatic hash updates when type2-runtime changes
 
 ### Build Tools
 
-External build tools are also verified:
+External build tools use strict hash verification:
 
 - **mksquashfs 4.6.1**: SHA256 hash `9c4974e07c61547dae14af4ed1f358b7d04618ae194e54d6be72ee126f0d2f53`
-- **zsyncmake 0.6.2**: SHA256 hash `0b9d53433387aa4f04634a6c63a5efa8203070f2298af72a705f9be3dda65af2` (already verified)
+- **zsyncmake 0.6.2**: SHA256 hash `0b9d53433387aa4f04634a6c63a5efa8203070f2298af72a705f9be3dda65af2`
 - **desktop-file-validate 0.28**: SHA256 hash `379ecbc1354d0c052188bdf5dbbc4a020088ad3f9cab54487a5852d1743a4f3b`
+
+These are versioned dependencies where hash verification is practical and effective.
 
 ## Build Provenance Attestation
 
@@ -63,7 +76,13 @@ These sanitizers help detect:
 - Memory errors (use-after-free, buffer overflows, memory leaks)
 - Undefined behavior (integer overflow, null pointer dereferences, etc.)
 
-Note: Sanitizers cannot be used with static builds and are intended for development/testing only.
+**Note**: Sanitizers cannot be used with static builds and are intended for development/testing only.
+
+**Future Enhancement**: To be fully effective, sanitizer builds should be run in CI with both:
+- The full application exercising real-world use cases
+- Unit tests covering both happy paths and error handling paths
+
+This would catch issues before they reach production.
 
 ## Updating Hashes
 

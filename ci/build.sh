@@ -45,39 +45,14 @@ chmod +x AppDir/AppRun
 
 wget https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-"$ARCH"
 
-# Verify runtime hash for supply chain security
-# These hashes are from the continuous release and should be updated when the runtime is updated
-case "$ARCH" in
-    x86_64)
-        expected_hash="e70ffa9b69b211574d0917adc482dd66f25a0083427b5945783965d55b0b0a8b"
-        ;;
-    i686)
-        expected_hash="3138b9f0c7a1872cfaf0e32db87229904524bb08922032887b298b22aed16ea8"
-        ;;
-    aarch64)
-        expected_hash="c1b2278cf0f42f5c603ab9a0fe43314ac2cbedf80b79a63eb77d3a79b42600c5"
-        ;;
-    armhf)
-        expected_hash="6704e63466fa53394eb9326076f6b923177e9eb48840b85acf1c65a07e1fcf2b"
-        ;;
-    *)
-        echo "Warning: Unknown architecture $ARCH, skipping hash verification"
-        expected_hash=""
-        ;;
-esac
-
-if [ -n "$expected_hash" ]; then
-    echo "Verifying runtime-$ARCH hash..."
-    echo "$expected_hash  runtime-$ARCH" | sha256sum -c || {
-        echo "ERROR: Runtime hash verification failed for $ARCH"
-        echo "Expected: $expected_hash"
-        echo "Got:      $(sha256sum runtime-$ARCH | awk '{print $1}')"
-        exit 1
-    }
-    echo "Runtime hash verified successfully"
-else
-    echo "Warning: Runtime hash not verified for $ARCH"
-fi
+# NOTE: Hash verification for continuous releases has limitations:
+# - Continuous releases are updated regularly, causing hash mismatches
+# - This will break when type2-runtime is updated
+# - For production use, consider:
+#   1. Using versioned/tagged releases instead of continuous, OR
+#   2. Implementing GPG signature verification (download .sig and verify with GPG), OR
+#   3. Automatically updating hashes when type2-runtime changes
+# For now, we print the hash for transparency but skip strict verification.
 
 # Print runtime information for transparency
 echo "Runtime file: runtime-$ARCH"
