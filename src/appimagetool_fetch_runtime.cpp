@@ -280,8 +280,14 @@ bool fetch_runtime(char *arch, size_t *size, char **buffer, bool verbose) {
         }
 
         auto runtimeData = response.data();
+        
+        // curl returns negative contentLength if size is not known
+        if (response.contentLength() < 0) {
+            std::cerr << "Error: content length not available from server" << std::endl;
+            return false;
+        }
 
-        if (runtimeData.size() != static_cast<std::vector<char>::size_type>(response.contentLength())) {
+        if (runtimeData.size() != static_cast<size_t>(response.contentLength())) {
             std::cerr << "Error: downloaded data size of " << runtimeData.size()
                       << " does not match content-length of " << response.contentLength() << std::endl;
             return false;

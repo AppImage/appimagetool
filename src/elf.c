@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <memory.h>
 #include <sys/mman.h>
+#include <limits.h>
 
 #include "light_elf.h"
 #include "light_byteswap.h"
@@ -174,6 +175,12 @@ bool appimage_get_elf_section_offset_and_length(const char* fname, const char* s
 char* read_file_offset_length(const char* fname, unsigned long offset, unsigned long length) {
     FILE* f;
     if ((f = fopen(fname, "r")) == NULL) {
+        return NULL;
+    }
+
+    // Validate offset can be safely cast to long
+    if (offset > (unsigned long)LONG_MAX) {
+        fclose(f);
         return NULL;
     }
 

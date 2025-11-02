@@ -94,7 +94,7 @@ static void die(const char *msg) {
 
 /* Generate a squashfs filesystem using mksquashfs on the $PATH 
 * execlp(), execvp(), and execvpe() search on the $PATH */
-int sfs_mksquashfs(char *source, char *destination, int offset) {
+int sfs_mksquashfs(char *source, char *destination, size_t offset) {
     pid_t pid = fork();
     if (pid == -1) {
         perror("sfs_mksquashfs fork() failed");
@@ -119,7 +119,7 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
     } else {
         // we are the child
         gchar* offset_string;
-        offset_string = g_strdup_printf("%i", offset);
+        offset_string = g_strdup_printf("%zu", offset);
 
         guint sqfs_opts_len = sqfs_opts ? g_strv_length(sqfs_opts) : 0;
 
@@ -464,9 +464,24 @@ bool readFile(char* filename, size_t* size, char** buffer) {
 
     fseek(f, 0, SEEK_END);
     long fsize = ftell(f);
+    if (fsize < 0) {
+        // ftell failed
+        fclose(f);
+        *buffer = 0;
+        *size = 0;
+        return false;
+    }
     fseek(f, 0, SEEK_SET);
 
     char *indata = malloc((size_t)fsize);
+    if (indata == NULL) {
+        // malloc failed
+        fclose(f);
+        *buffer = 0;
+        *size = 0;
+        return false;
+    }
+    
     fread(indata, (size_t)fsize, 1, f);
     fclose(f);
     *size = (size_t)fsize;
@@ -696,11 +711,7 @@ main (int argc, char *argv[])
                     g_spawn_command_line_sync(command_line, &out, NULL, &exit_status, &error);
 
                     // g_spawn_command_line_sync might have set error already, in that case we don't want to overwrite
-#if GLIB_CHECK_VERSION(2, 70, 0)
                     if (error != NULL || !g_spawn_check_wait_status(exit_status, &error)) {
-#else
-                    if (error != NULL || !g_spawn_check_exit_status(exit_status, &error)) {
-#endif
                         if (error == NULL) {
                             g_printerr("Failed to run 'git rev-parse --short HEAD, but failed to interpret GLib error state: %d\n", exit_status);
                         } else {
@@ -777,8 +788,7 @@ main (int argc, char *argv[])
         gchar* arch = getArchName(archs);
         fprintf(stderr, "Using architecture %s\n", arch);
 
-        // Reserve space for version, arch, and ".AppImage" suffix (max ~50 chars)
-        char app_name_for_filename[PATH_MAX - 50];
+        char app_name_for_filename[PATH_MAX];
         {
             const char* const env_app_name = getenv("APPIMAGETOOL_APP_NAME");
             if (env_app_name != NULL) {
@@ -804,10 +814,15 @@ main (int argc, char *argv[])
             char dest_path[PATH_MAX];
 
             // if $VERSION is specified, we embed it into the filename
+            int ret;
             if (version_env != NULL) {
-                snprintf(dest_path, sizeof(dest_path), "%s-%s-%s.AppImage", app_name_for_filename, version_env, arch);
+                ret = snprintf(dest_path, sizeof(dest_path), "%s-%s-%s.AppImage", app_name_for_filename, version_env, arch);
             } else {
-                snprintf(dest_path, sizeof(dest_path), "%s-%s.AppImage", app_name_for_filename, arch);
+                ret = snprintf(dest_path, sizeof(dest_path), "%s-%s.AppImage", app_name_for_filename, arch);
+            }
+            
+            if (ret < 0 || (size_t)ret >= sizeof(dest_path)) {
+                die("Destination filename too long");
             }
 
             destination = strdup(dest_path);
@@ -932,7 +947,7 @@ main (int argc, char *argv[])
         if (verbose)
             printf("Size of the embedded runtime: %zu bytes\n", size);
 
-        int result = sfs_mksquashfs(source, destination, (int)size);
+        int result = sfs_mksquashfs(source, destination, size);
         if(result != 0)
             die("sfs_mksquashfs error");
         
