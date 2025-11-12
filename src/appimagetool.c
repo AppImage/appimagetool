@@ -857,18 +857,25 @@ main (int argc, char *argv[])
         
         /* Check if AppStream upstream metadata is present in source AppDir */
         if(! no_appstream){
-            char application_id[PATH_MAX];
-            sprintf (application_id,  "%s", basename(desktop_file));
-            replacestr(application_id, ".desktop", ".appdata.xml");
-            gchar *appdata_path = g_build_filename(source, "/usr/share/metainfo/", application_id, NULL);
-            if (! g_file_test(appdata_path, G_FILE_TEST_IS_REGULAR)){
+            char appdata_id[PATH_MAX];
+            char metainfo_id[PATH_MAX];
+            sprintf (appdata_id,  "%s", basename(desktop_file));
+            replacestr(appdata_id, ".desktop", ".appdata.xml");
+            sprintf (metainfo_id,  "%s", basename(desktop_file));
+            replacestr(metainfo_id, ".desktop", ".metainfo.xml");
+            gchar *appdata_path  = g_build_filename(source, "/usr/share/metainfo/", appdata_id, NULL);
+            gchar *metainfo_path = g_build_filename(source, "/usr/share/metainfo/", metainfo_id, NULL);
+            gboolean appdata_exist  = g_file_test(appdata_path, G_FILE_TEST_IS_REGULAR);
+            gboolean metadata_exist = g_file_test(metainfo_path, G_FILE_TEST_IS_REGULAR);
+
+            if (! appdata_exist && ! metadata_exist){
                 fprintf (stderr, "WARNING: AppStream upstream metadata is missing, please consider creating it\n");
-                fprintf (stderr, "         in usr/share/metainfo/%s\n", application_id);
+                fprintf (stderr, "         in usr/share/metainfo/%s\n", metainfo_id);
                 fprintf (stderr, "         Please see https://www.freedesktop.org/software/appstream/docs/chap-Quickstart.html#sect-Quickstart-DesktopApps\n");
                 fprintf (stderr, "         for more information or use the generator at\n");
                 fprintf (stderr, "         https://docs.appimage.org/packaging-guide/optional/appstream.html#using-the-appstream-generator\n");
             } else {
-                fprintf (stderr, "AppStream upstream metadata found in usr/share/metainfo/%s\n", application_id);
+                fprintf (stderr, "AppStream upstream metadata found in usr/share/metainfo/%s\n", (appdata_exist ? appdata_id : metainfo_id));
                 /* Use ximion's appstreamcli to make sure that desktop file and appdata match together */
                 if(g_find_program_in_path ("appstreamcli")) {
                     char *args[] = {
@@ -888,7 +895,7 @@ main (int argc, char *argv[])
                     char *args[] = {
                         "appstream-util",
                         "validate-relax",
-                        appdata_path,
+                        (appdata_exist ? appdata_path : metainfo_path),
                         NULL
                     };
                     g_print("Trying to validate AppStream information with the appstream-util tool\n");
