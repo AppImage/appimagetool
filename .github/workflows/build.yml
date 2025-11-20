@@ -24,6 +24,12 @@ jobs:
 
     runs-on: ${{ matrix.RUNS_ON }}
 
+    # Required for GitHub attestation
+    permissions:
+      id-token: write
+      contents: read
+      attestations: write
+
     env:
       ARCH: ${{ matrix.ARCH }}
 
@@ -35,6 +41,11 @@ jobs:
       - name: Build in Docker container
         run: |
           bash -ex ci/build-in-docker.sh
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: '**/appimagetool*.AppImage'
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
