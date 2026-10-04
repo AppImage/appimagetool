@@ -40,6 +40,7 @@ Some of the parameters above can alternatively be specified as environment varia
 - `ARCH`: Needs to be set whenever appimagetool cannot automatically determine the architecture of the binaries inside the AppDir to choose a suitable runtime (e.g., when binaries for multiple architectures or just shell scripts are contained in there).
 - `APPIMAGETOOL_APP_NAME`: If no destination is set by the user, appimagetool automatically generates a suitable output filename, using the root desktop entry's `Name` field. With this environment variable, this value can be set explicitly by the user.
 - `APPIMAGETOOL_SIGN_PASSPHRASE`: If the `--sign-key` is encrypted and requires a passphrase to be used for signing (and, for some reason, GnuPG cannot be used interactively, e.g., in a CI environment), this environment variable can be used to safely pass the key.
+- `APPIMAGETOOL_RUNTIME_FILE`: Path to a local AppImage runtime. If `--runtime-file` is specified, it takes precedence over this environment variable.
 - `VERSION`: This value will be inserted by appimagetool into the root desktop file and (if the destination parameter is not provided by the user) in the output filename.
 
 ## Building
@@ -57,4 +58,4 @@ If you are on an Intel machine and would like to cross-compile for ARM:
 
 ## Changelog
 
-* Unlike previous versions of this tool provided in the [AppImageKit](https://github.com/AppImage/AppImageKit/) repository, this version downloads the latest AppImage runtime (which will become part of the AppImage) from https://github.com/AppImage/type2-runtime/releases. If you do not like this (or if your build system does not have Internet access), you can supply a locally downloaded AppImage runtime using the `--runtime-file` parameter instead.
+* Unlike previous versions of this tool provided in the [AppImageKit](https://github.com/AppImage/AppImageKit/) repository, this version downloads the latest AppImage runtime (which will become part of the AppImage) from https://github.com/AppImage/type2-runtime/releases. If you do not like this (or if your build system does not have Internet access), you can supply a locally downloaded AppImage runtime using the `APPIMAGETOOL_RUNTIME_FILE` environment variable or `--runtime-file` parameter instead.

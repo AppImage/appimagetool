@@ -597,7 +597,11 @@ main (int argc, char *argv[])
             exit(1);
         }
     }
-        
+
+    /* Parse runtime file environment variable.
+     * If --runtime-file is specified, it takes precedence over this. */
+    runtime_file = getenv("APPIMAGETOOL_RUNTIME_FILE");
+
     GError *error = NULL;
     GOptionContext *context;
 
