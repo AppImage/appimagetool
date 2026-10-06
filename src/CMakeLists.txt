@@ -8,6 +8,15 @@ add_executable(appimagetool
     md5.c
 )
 
+# Enable comprehensive warnings for better code quality and security
+target_compile_options(appimagetool PRIVATE
+    -Wall
+    -Wextra
+    -Werror
+    $<$<COMPILE_LANGUAGE:C>:-Wconversion>
+    $<$<COMPILE_LANGUAGE:CXX>:-Wconversion>
+)
+
 # trick: list libraries on which imported static ones depend on in the PUBLIC section
 # CMake then adds them after the PRIVATE ones in the linker command
 target_link_libraries(appimagetool
