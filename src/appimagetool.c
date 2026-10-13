@@ -384,13 +384,17 @@ void extract_arch_from_text(gchar *archname, const gchar* sourcename, bool* arch
 
 int16_t read_elf_e_machine_field(const gchar* file_path) {
     int16_t e_machine = 0x00;
+    unsigned char ei_data = 0;
     FILE* file = 0;
     file = fopen(file_path, "rb");
     if (file) {
+        /* EI_DATA: the byte order of the ELF file (2 = ELFDATA2MSB, big endian) */
+        fseek(file, 0x05, SEEK_SET);
+        fread(&ei_data, sizeof(ei_data), 1, file);
         fseek(file, 0x12, SEEK_SET);
         fread(&e_machine, sizeof(e_machine), 1, file);
         fclose(file);
-        e_machine = GINT16_FROM_LE(e_machine);
+        e_machine = (ei_data == 2) ? GINT16_FROM_BE(e_machine) : GINT16_FROM_LE(e_machine);
     }
 
     return e_machine;
