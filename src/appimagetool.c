@@ -409,20 +409,20 @@ void extract_arch_from_text(gchar *archname, const gchar* sourcename, bool* arch
                 archs[fARCH_aarch64] = 1;
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture ARM aarch64\n", sourcename);
-            } else if (g_ascii_strncasecmp("riscv64", archname, 8) == 0) {
+            } else if (g_ascii_strcasecmp("riscv64", archname) == 0) {
                 archs[fARCH_riscv64] = 1;
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture RISC-V riscv64\n", sourcename);
-            } else if (g_ascii_strncasecmp("ppc64", archname, 6) == 0 ||
-                       g_ascii_strncasecmp("ppc64be", archname, 8) == 0 ||
-                       g_ascii_strncasecmp("powerpc64", archname, 10) == 0 ||
-                       g_ascii_strncasecmp("powerpc64be", archname, 12) == 0) {
+            } else if (g_ascii_strcasecmp("ppc64", archname) == 0 ||
+                       g_ascii_strcasecmp("ppc64be", archname) == 0 ||
+                       g_ascii_strcasecmp("powerpc64", archname) == 0 ||
+                       g_ascii_strcasecmp("powerpc64be", archname) == 0) {
                 archs[fARCH_ppc64] = 1;
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture PowerPC ppc64 (big endian)\n", sourcename);
-            } else if (g_ascii_strncasecmp("ppc64le", archname, 8) == 0 ||
-                       g_ascii_strncasecmp("ppc64el", archname, 8) == 0 ||
-                       g_ascii_strncasecmp("powerpc64le", archname, 12) == 0) {
+            } else if (g_ascii_strcasecmp("ppc64le", archname) == 0 ||
+                       g_ascii_strcasecmp("ppc64el", archname) == 0 ||
+                       g_ascii_strcasecmp("powerpc64le", archname) == 0) {
                 archs[fARCH_ppc64le] = 1;
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture PowerPC ppc64le (little endian)\n", sourcename);
