@@ -84,9 +84,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends debootstrap qemu-user-static
-          # the keyring of Ubuntu is older than the key that signs sid today
-          KEYRING=debian-ports-archive-keyring_2026.02.04_all.deb
-          curl -fsSLO https://deb.debian.org/debian/pool/main/d/debian-ports-archive-keyring/$KEYRING
+          # the keyring of Ubuntu is older than the key that signs sid today. The pool of
+          # Debian keeps only the current version of the package: its file name comes
+          # from the package index, so that a new upload of the keyring breaks nothing
+          POOL=$(curl -fsSL https://deb.debian.org/debian/dists/sid/main/binary-all/Packages.xz | xz -d \
+            | awk '/^Package: debian-ports-archive-keyring$/ { f = 1 } f && /^Filename:/ { print $2; f = 0 }')
+          test -n "$POOL"
+          KEYRING=$(basename "$POOL")
+          curl -fsSLO "https://deb.debian.org/debian/$POOL"
           dpkg-deb -x $KEYRING keyring
           sudo debootstrap --arch=${{ matrix.ARCH }} --variant=minbase \
             --include=debian-ports-archive-keyring \
@@ -115,6 +120,9 @@ jobs:
     needs:
       - build
       - build-debian-ports
+    # Debian ports is unstable by nature and its job runs emulated for hours: when
+    # it fails, the release still goes out with the other architectures
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
