@@ -906,20 +906,18 @@ main (int argc, char *argv[])
             exit(1);
         }
        
-        /* Check if .DirIcon is present in source AppDir */
+        /* .DirIcon is what file managers show; an AppImage without a usable one is defective */
         gchar *diricon_path = g_build_filename(source, ".DirIcon", NULL);
-        
-        if (! g_file_test(diricon_path, G_FILE_TEST_EXISTS)){
-            fprintf (stderr, "Deleting pre-existing .DirIcon\n");
-            g_unlink(diricon_path);
+        if (!g_file_test(diricon_path, G_FILE_TEST_IS_SYMLINK) && !g_file_test(diricon_path, G_FILE_TEST_EXISTS)) {
+            fprintf(stderr, "%s is missing\n", diricon_path);
+            die(".DirIcon is missing in the AppDir");
         }
-        if (! g_file_test(diricon_path, G_FILE_TEST_IS_REGULAR)){
-            fprintf (stderr, "Creating .DirIcon symlink based on information from desktop file\n");
-            int res = symlink(basename(icon_file_path), diricon_path);
-            if(res)
-                die("Could not symlink .DirIcon");
+        /* EXISTS and IS_REGULAR follow symlinks, so a dangling or non-file target fails here */
+        if (!g_file_test(diricon_path, G_FILE_TEST_IS_REGULAR)) {
+            fprintf(stderr, "%s is a broken symlink or does not point to a regular file\n", diricon_path);
+            die(".DirIcon is defective");
         }
-        
+
         /* Check if AppStream upstream metadata is present in source AppDir */
         if(! no_appstream){
             char application_id[PATH_MAX];
