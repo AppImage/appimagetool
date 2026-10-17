@@ -886,15 +886,14 @@ main (int argc, char *argv[])
         gchar* icon_name = get_desktop_entry(kf, "Icon");
         gchar* icon_file_path = NULL;
         gchar* icon_file_png;
-        gchar* icon_file_svg;
         gchar* icon_file_xpm;
+        /* No .svg: SVG is hard to parse, so consumers of .DirIcon (file managers,
+         * thumbnailers) cannot be expected to handle it reliably; PNG is preferred,
+         * XPM is the last resort */
         icon_file_png = g_strdup_printf("%s/%s.png", source, icon_name);
-        icon_file_svg = g_strdup_printf("%s/%s.svg", source, icon_name);
         icon_file_xpm = g_strdup_printf("%s/%s.xpm", source, icon_name);
         if (g_file_test(icon_file_png, G_FILE_TEST_IS_REGULAR)) {
             icon_file_path = icon_file_png;
-        } else if(g_file_test(icon_file_svg, G_FILE_TEST_IS_REGULAR)) {
-            icon_file_path = icon_file_svg;
         } else if(g_file_test(icon_file_xpm, G_FILE_TEST_IS_REGULAR)) {
             icon_file_path = icon_file_xpm;
         }
@@ -916,7 +915,7 @@ main (int argc, char *argv[])
          * symlinks, so a dangling symlink or a non-file target fails here */
         if (!g_file_test(diricon_path, G_FILE_TEST_IS_REGULAR)) {
             if (icon_file_path == NULL) {
-                fprintf (stderr, "%s{.png,.svg,.xpm} defined in desktop file but not found\n", icon_name);
+                fprintf (stderr, "%s{.png,.xpm} defined in desktop file but not found\n", icon_name);
                 fprintf (stderr, "For example, you could put a 256x256 pixel png into\n");
                 fprintf (stderr, "%s/%s.png\n", source, icon_name);
             }
