@@ -897,25 +897,31 @@ main (int argc, char *argv[])
             icon_file_path = icon_file_svg;
         } else if(g_file_test(icon_file_xpm, G_FILE_TEST_IS_REGULAR)) {
             icon_file_path = icon_file_xpm;
-        } else {
-            fprintf (stderr, "%s{.png,.svg,.xpm} defined in desktop file but not found\n", icon_name);
-            fprintf (stderr, "For example, you could put a 256x256 pixel png into\n");
-            gchar *icon_name_with_png = g_strconcat(icon_name, ".png", NULL);
-            gchar *example_path = g_build_filename(source, "/", icon_name_with_png, NULL);
-            fprintf (stderr, "%s\n", example_path);
-            exit(1);
         }
-       
-        /* .DirIcon is what file managers show; an AppImage without a usable one is defective */
+
+        /* Prefer a .DirIcon derived from the desktop file; a real file already
+         * there is kept, any other pre-existing one (symlink) is replaced */
         gchar *diricon_path = g_build_filename(source, ".DirIcon", NULL);
-        if (!g_file_test(diricon_path, G_FILE_TEST_IS_SYMLINK) && !g_file_test(diricon_path, G_FILE_TEST_EXISTS)) {
-            fprintf(stderr, "%s is missing\n", diricon_path);
-            die(".DirIcon is missing in the AppDir");
+        gboolean diricon_is_real_file = g_file_test(diricon_path, G_FILE_TEST_IS_REGULAR)
+            && !g_file_test(diricon_path, G_FILE_TEST_IS_SYMLINK);
+        if (icon_file_path != NULL && !diricon_is_real_file) {
+            if (g_file_test(diricon_path, G_FILE_TEST_IS_SYMLINK) && g_unlink(diricon_path) != 0)
+                die("Could not remove pre-existing .DirIcon symlink");
+            fprintf (stderr, "Creating .DirIcon symlink based on information from desktop file\n");
+            if (symlink(basename(icon_file_path), diricon_path) != 0)
+                die("Could not symlink .DirIcon");
         }
-        /* EXISTS and IS_REGULAR follow symlinks, so a dangling or non-file target fails here */
+
+        /* Fall back to the pre-existing .DirIcon; EXISTS and IS_REGULAR follow
+         * symlinks, so a dangling symlink or a non-file target fails here */
         if (!g_file_test(diricon_path, G_FILE_TEST_IS_REGULAR)) {
-            fprintf(stderr, "%s is a broken symlink or does not point to a regular file\n", diricon_path);
-            die(".DirIcon is defective");
+            if (icon_file_path == NULL) {
+                fprintf (stderr, "%s{.png,.svg,.xpm} defined in desktop file but not found\n", icon_name);
+                fprintf (stderr, "For example, you could put a 256x256 pixel png into\n");
+                fprintf (stderr, "%s/%s.png\n", source, icon_name);
+            }
+            fprintf (stderr, "%s is missing, a broken symlink, or not a regular file\n", diricon_path);
+            die("No valid .DirIcon");
         }
 
         /* Check if AppStream upstream metadata is present in source AppDir */
