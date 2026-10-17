@@ -30,7 +30,7 @@
     #define RELEASE_NAME "continuous build"
 #endif
 
-#define _XOPEN_SOURCE 700
+#define _GNU_SOURCE
 #include <ftw.h>
 #include <errno.h>
 #include <string.h>
