@@ -32,6 +32,7 @@
 
 #define _GNU_SOURCE
 #include <ftw.h>
+#include <stdarg.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -103,22 +104,37 @@ static void die(const char *msg) {
 /* The runtime of a user other than the packager must be able to read the
  * AppDir content and execute the programs in it, e.g. when a cached launcher
  * was packaged with mode 0770 and owned by root. Modes are only checked, never
- * changed: the packager has to decide how to fix them. */
+ * changed: the packager has to decide how to fix them. Every message names the
+ * path, what is wrong and the command that fixes it, because the packager
+ * cannot be expected to know how AppImages are mounted. */
 static int permission_problems = 0;
 
-static void require_mode(const char *path, mode_t wanted) {
-    struct stat st;
-    if (stat(path, &st) != 0) {
-        fprintf(stderr, "Cannot stat %s: %s\n", path, strerror(errno));
-        permission_problems++;
+static void report_problem(const char *path, const char *what, const char *fix_format, ...) {
+    gchar *quoted = g_shell_quote(path);
+    va_list args;
+    va_start(args, fix_format);
+    gchar *fix = g_strdup_vprintf(fix_format, args);
+    va_end(args);
+    fprintf(stderr, "ERROR: %s\n       %s\n       Fix: %s %s\n\n", path, what, fix, quoted);
+    g_free(fix);
+    g_free(quoted);
+    permission_problems++;
+}
+
+static void require_mode(const char *path, const struct stat *st, mode_t wanted) {
+    mode_t mode = st->st_mode & 07777;
+    mode_t missing = wanted & ~mode;
+    if (missing == 0)
         return;
-    }
-    mode_t mode = st.st_mode & 07777;
-    if ((mode & wanted) != wanted) {
-        fprintf(stderr, "%s has mode %04o but needs at least %04o for other users\n",
-                path, (unsigned) mode, (unsigned) wanted);
-        permission_problems++;
-    }
+    gchar *what = g_strdup_printf("has mode %04o, but it must be %s%s%s for all users (owner, group and others); "
+                                  "the AppImage is run by users other than you, who would get 'Permission denied'",
+                                  (unsigned) mode,
+                                  (missing & 0444) ? "readable" : "",
+                                  ((missing & 0444) && (missing & 0111)) ? " and " : "",
+                                  (missing & 0111) ? "executable" : "");
+    report_problem(path, what, "chmod %s%s", (missing & 0444) ? "a+r" : "",
+                   (missing & 0111) ? ((missing & 0444) ? ",a+x" : "a+x") : "");
+    g_free(what);
 }
 
 static int check_permissions_cb(const char *path, const struct stat *st, int type, struct FTW *ftw) {
@@ -126,21 +142,30 @@ static int check_permissions_cb(const char *path, const struct stat *st, int typ
     if (type == FTW_SL || type == FTW_SLN)
         return 0;
     if (type == FTW_DNR || type == FTW_NS) {
-        fprintf(stderr, "Cannot access %s\n", path);
-        permission_problems++;
+        report_problem(path, "cannot be accessed by the user running appimagetool (unreadable directory or "
+                             "missing entry); if it is owned by another user such as root, run as that user "
+                             "or change the owner, e.g. with 'sudo chown -R $(id -un):$(id -gn) <AppDir>'. "
+                             "Then", "chmod a+rx");
         return 0;
     }
     if (type == FTW_D || type == FTW_DP)
-        require_mode(path, 0555);
+        require_mode(path, st, 0555);
     else if (S_ISREG(st->st_mode)) {
-        require_mode(path, (st->st_mode & S_IXUSR) ? 0555 : 0444);
+        require_mode(path, st, (st->st_mode & S_IXUSR) ? 0555 : 0444);
         /* The setuid/setgid bits cannot work inside an AppImage (it is mounted
          * nosuid); such binaries, e.g. browser sandboxes or fusermount, need
          * a different approach by the packager instead of a masked failure */
         if (st->st_mode & (S_ISUID | S_ISGID)) {
-            fprintf(stderr, "%s has the setuid/setgid bit set (mode %04o), which does not work inside an AppImage\n",
-                    path, (unsigned) (st->st_mode & 07777));
-            permission_problems++;
+            gchar *what = g_strdup_printf("has the setuid/setgid bit set (mode %04o). AppImages are mounted "
+                                          "with 'nosuid', so this bit has no effect and the program would run "
+                                          "without the privileges it expects and fail in confusing ways. "
+                                          "Do not bundle programs that rely on it (e.g. chrome-sandbox, "
+                                          "fusermount, sudo); use the host's copy or an approach that works "
+                                          "unprivileged (e.g. user namespaces). Only if the program works "
+                                          "without the bit, you can clear it",
+                                          (unsigned) (st->st_mode & 07777));
+            report_problem(path, what, "chmod u-s,g-s");
+            g_free(what);
         }
     }
     return 0;
@@ -152,17 +177,34 @@ static void check_appdir_permissions(const char *appdir) {
     const char *launchers[] = { "AppRun", "AppRun.wrapped" };
     for (size_t i = 0; i < sizeof(launchers) / sizeof(launchers[0]); i++) {
         gchar *launcher = g_build_filename(appdir, launchers[i], NULL);
-        if (g_file_test(launcher, G_FILE_TEST_EXISTS))
-            require_mode(launcher, 0555);
-        else if (i == 0) {
-            fprintf(stderr, "%s does not exist\n", launcher);
-            permission_problems++;
+        struct stat st;
+        if (stat(launcher, &st) == 0) {
+            /* A launcher the owner can execute was already checked above */
+            if (!(st.st_mode & S_IXUSR))
+                require_mode(launcher, &st, 0555);
+        } else if (i == 0) {
+            report_problem(launcher, "does not exist, but every AppDir needs an executable AppRun "
+                                     "(a file or a symlink to one). After creating it", "chmod a+rx");
         }
         g_free(launcher);
     }
     if (permission_problems > 0) {
-        fprintf(stderr, "Found %d permission problem(s) in the AppDir, e.g. fix them with chmod -R a+rX and "
-                        "chmod a+x on AppRun, or pass --no-check-permissions to skip this check\n", permission_problems);
+        gchar *quoted = g_shell_quote(appdir);
+        gchar *apprun_path = g_build_filename(appdir, "AppRun", NULL);
+        gchar *apprun = g_shell_quote(apprun_path);
+        g_free(apprun_path);
+        fprintf(stderr, "appimagetool: found %d problem(s) in the AppDir, nothing was changed and no AppImage "
+                        "was created.\n"
+                        "Fix the paths listed above, then run appimagetool again. To fix all read/execute "
+                        "permissions at once, run:\n"
+                        "    chmod -R a+rX %s\n"
+                        "    chmod a+rx %s\n"
+                        "If the files belong to root, prefix the chmod commands with sudo or first take ownership with "
+                        "this command: sudo chown -R $(id -un):$(id -gn) %s\n"
+                        "If you are certain that your AppImage needs these modes, pass --no-check-permissions "
+                        "to skip this check.\n", permission_problems, quoted, apprun, quoted);
+        g_free(apprun);
+        g_free(quoted);
         exit(1);
     }
 }
