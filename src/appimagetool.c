@@ -132,8 +132,17 @@ static int check_permissions_cb(const char *path, const struct stat *st, int typ
     }
     if (type == FTW_D || type == FTW_DP)
         require_mode(path, 0555);
-    else if (S_ISREG(st->st_mode))
+    else if (S_ISREG(st->st_mode)) {
         require_mode(path, (st->st_mode & S_IXUSR) ? 0555 : 0444);
+        /* The setuid/setgid bits cannot work inside an AppImage (it is mounted
+         * nosuid); such binaries, e.g. browser sandboxes or fusermount, need
+         * a different approach by the packager instead of a masked failure */
+        if (st->st_mode & (S_ISUID | S_ISGID)) {
+            fprintf(stderr, "%s has the setuid/setgid bit set (mode %04o), which does not work inside an AppImage\n",
+                    path, (unsigned) (st->st_mode & 07777));
+            permission_problems++;
+        }
+    }
     return 0;
 }
 
