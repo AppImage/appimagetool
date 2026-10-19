@@ -79,6 +79,7 @@ static gboolean verbose = FALSE;
 static gboolean showVersionOnly = FALSE;
 static gboolean sign = FALSE;
 static gboolean no_appstream = FALSE;
+static gboolean no_check_permissions = FALSE;
 gchar **remaining_args = NULL;
 gchar *updateinformation = NULL;
 static gboolean guess_update_information = FALSE;
@@ -101,58 +102,60 @@ static void die(const char *msg) {
 * execlp(), execvp(), and execvpe() search on the $PATH */
 /* The runtime of a user other than the packager must be able to read the
  * AppDir content and execute the programs in it, e.g. when a cached launcher
- * was packaged with mode 0770 and owned by root. */
-static int fix_permissions_failed = 0;
+ * was packaged with mode 0770 and owned by root. Modes are only checked, never
+ * changed: the packager has to decide how to fix them. */
+static int permission_problems = 0;
 
-static void ensure_mode(const char *path, mode_t wanted) {
+static void require_mode(const char *path, mode_t wanted) {
     struct stat st;
     if (stat(path, &st) != 0) {
         fprintf(stderr, "Cannot stat %s: %s\n", path, strerror(errno));
-        fix_permissions_failed = 1;
+        permission_problems++;
         return;
     }
     mode_t mode = st.st_mode & 07777;
-    if ((mode & wanted) == wanted)
-        return;
-    if (chmod(path, mode | wanted) != 0) {
-        fprintf(stderr, "Cannot fix permissions of %s (mode %04o): %s\n", path, (unsigned) mode, strerror(errno));
-        fix_permissions_failed = 1;
+    if ((mode & wanted) != wanted) {
+        fprintf(stderr, "%s has mode %04o but needs at least %04o for other users\n",
+                path, (unsigned) mode, (unsigned) wanted);
+        permission_problems++;
     }
 }
 
-static int fix_permissions_cb(const char *path, const struct stat *st, int type, struct FTW *ftw) {
+static int check_permissions_cb(const char *path, const struct stat *st, int type, struct FTW *ftw) {
     (void) ftw;
     if (type == FTW_SL || type == FTW_SLN)
         return 0;
     if (type == FTW_DNR || type == FTW_NS) {
         fprintf(stderr, "Cannot access %s\n", path);
-        fix_permissions_failed = 1;
+        permission_problems++;
         return 0;
     }
     if (type == FTW_D || type == FTW_DP)
-        ensure_mode(path, 0555);
+        require_mode(path, 0555);
     else if (S_ISREG(st->st_mode))
-        ensure_mode(path, (st->st_mode & S_IXUSR) ? 0555 : 0444);
+        require_mode(path, (st->st_mode & S_IXUSR) ? 0555 : 0444);
     return 0;
 }
 
-static void fix_appdir_permissions(const char *appdir) {
-    /* FTW_DEPTH is not used: a directory must become searchable before descending */
-    if (nftw(appdir, fix_permissions_cb, 64, FTW_PHYS) != 0)
-        fix_permissions_failed = 1;
+static void check_appdir_permissions(const char *appdir) {
+    if (nftw(appdir, check_permissions_cb, 64, FTW_PHYS) != 0)
+        permission_problems++;
     const char *launchers[] = { "AppRun", "AppRun.wrapped" };
     for (size_t i = 0; i < sizeof(launchers) / sizeof(launchers[0]); i++) {
         gchar *launcher = g_build_filename(appdir, launchers[i], NULL);
         if (g_file_test(launcher, G_FILE_TEST_EXISTS))
-            ensure_mode(launcher, 0555);
+            require_mode(launcher, 0555);
         else if (i == 0) {
             fprintf(stderr, "%s does not exist\n", launcher);
-            fix_permissions_failed = 1;
+            permission_problems++;
         }
         g_free(launcher);
     }
-    if (fix_permissions_failed)
-        die("Could not make the AppDir readable and AppRun executable for everyone");
+    if (permission_problems > 0) {
+        fprintf(stderr, "Found %d permission problem(s) in the AppDir, e.g. fix them with chmod -R a+rX and "
+                        "chmod a+x on AppRun, or pass --no-check-permissions to skip this check\n", permission_problems);
+        exit(1);
+    }
 }
 
 int sfs_mksquashfs(char *source, char *destination, int offset) {
@@ -581,6 +584,7 @@ static GOptionEntry entries[] =
     { "comp", 0, 0, G_OPTION_ARG_STRING, &sqfs_comp, "Squashfs compression (default: zstd)", NULL },
     { "mksquashfs-opt", 0, 0, G_OPTION_ARG_STRING_ARRAY, &sqfs_opts, "Argument to pass through to mksquashfs; can be specified multiple times", NULL },
     { "no-appstream", 'n', 0, G_OPTION_ARG_NONE, &no_appstream, "Do not check AppStream metadata", NULL },
+    { "no-check-permissions", 0, 0, G_OPTION_ARG_NONE, &no_check_permissions, "Do not check that AppDir files are readable and AppRun is executable for everyone", NULL },
     { "exclude-file", 0, 0, G_OPTION_ARG_STRING, &exclude_file, _exclude_file_desc, NULL },
     { "runtime-file", 0, 0, G_OPTION_ARG_STRING, &runtime_file, "Runtime file to use", NULL },
     { "sign-key", 0, 0, G_OPTION_ARG_STRING, &sign_key, "Key ID to use for gpg[2] signatures", NULL},
@@ -992,7 +996,8 @@ main (int argc, char *argv[])
         if (verbose)
             printf("Size of the embedded runtime: %d bytes\n", size);
         
-        fix_appdir_permissions(source);
+        if (!no_check_permissions)
+            check_appdir_permissions(source);
         int result = sfs_mksquashfs(source, destination, size);
         if(result != 0)
             die("sfs_mksquashfs error");
