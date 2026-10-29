@@ -30,6 +30,12 @@
     #define RELEASE_NAME "continuous build"
 #endif
 
+#define _GNU_SOURCE
+#include <ftw.h>
+#include <stdarg.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 
 #include <glib.h>
@@ -74,6 +80,7 @@ static gboolean verbose = FALSE;
 static gboolean showVersionOnly = FALSE;
 static gboolean sign = FALSE;
 static gboolean no_appstream = FALSE;
+static gboolean no_check_permissions = FALSE;
 gchar **remaining_args = NULL;
 gchar *updateinformation = NULL;
 static gboolean guess_update_information = FALSE;
@@ -94,6 +101,114 @@ static void die(const char *msg) {
 
 /* Generate a squashfs filesystem using mksquashfs on the $PATH 
 * execlp(), execvp(), and execvpe() search on the $PATH */
+/* The runtime of a user other than the packager must be able to read the
+ * AppDir content and execute the programs in it, e.g. when a cached launcher
+ * was packaged with mode 0770 and owned by root. Modes are only checked, never
+ * changed: the packager has to decide how to fix them. Every message names the
+ * path, what is wrong and the command that fixes it, because the packager
+ * cannot be expected to know how AppImages are mounted. */
+static int permission_problems = 0;
+
+static void report_problem(const char *path, const char *what, const char *fix_format, ...) {
+    gchar *quoted = g_shell_quote(path);
+    va_list args;
+    va_start(args, fix_format);
+    gchar *fix = g_strdup_vprintf(fix_format, args);
+    va_end(args);
+    fprintf(stderr, "ERROR: %s\n       %s\n       Fix: %s %s\n\n", path, what, fix, quoted);
+    g_free(fix);
+    g_free(quoted);
+    permission_problems++;
+}
+
+static void require_mode(const char *path, const struct stat *st, mode_t wanted) {
+    mode_t mode = st->st_mode & 07777;
+    mode_t missing = wanted & ~mode;
+    if (missing == 0)
+        return;
+    gchar *what = g_strdup_printf("has mode %04o, but it must be %s%s%s for all users (owner, group and others); "
+                                  "the AppImage is run by users other than you, who would get 'Permission denied'",
+                                  (unsigned) mode,
+                                  (missing & 0444) ? "readable" : "",
+                                  ((missing & 0444) && (missing & 0111)) ? " and " : "",
+                                  (missing & 0111) ? "executable" : "");
+    report_problem(path, what, "chmod %s%s", (missing & 0444) ? "a+r" : "",
+                   (missing & 0111) ? ((missing & 0444) ? ",a+x" : "a+x") : "");
+    g_free(what);
+}
+
+static int check_permissions_cb(const char *path, const struct stat *st, int type, struct FTW *ftw) {
+    (void) ftw;
+    if (type == FTW_SL || type == FTW_SLN)
+        return 0;
+    if (type == FTW_DNR || type == FTW_NS) {
+        report_problem(path, "cannot be accessed by the user running appimagetool (unreadable directory or "
+                             "missing entry); if it is owned by another user such as root, run as that user "
+                             "or change the owner, e.g. with 'sudo chown -R $(id -un):$(id -gn) <AppDir>'. "
+                             "Then", "chmod a+rx");
+        return 0;
+    }
+    if (type == FTW_D || type == FTW_DP)
+        require_mode(path, st, 0555);
+    else if (S_ISREG(st->st_mode)) {
+        require_mode(path, st, (st->st_mode & S_IXUSR) ? 0555 : 0444);
+        /* The setuid/setgid bits cannot work inside an AppImage (it is mounted
+         * nosuid); such binaries, e.g. browser sandboxes or fusermount, need
+         * a different approach by the packager instead of a masked failure */
+        if (st->st_mode & (S_ISUID | S_ISGID)) {
+            gchar *what = g_strdup_printf("has the setuid/setgid bit set (mode %04o). AppImages are mounted "
+                                          "with 'nosuid', so this bit has no effect and the program would run "
+                                          "without the privileges it expects and fail in confusing ways. "
+                                          "Do not bundle programs that rely on it (e.g. chrome-sandbox, "
+                                          "fusermount, sudo); use the host's copy or an approach that works "
+                                          "unprivileged (e.g. user namespaces). Only if the program works "
+                                          "without the bit, you can clear it",
+                                          (unsigned) (st->st_mode & 07777));
+            report_problem(path, what, "chmod u-s,g-s");
+            g_free(what);
+        }
+    }
+    return 0;
+}
+
+static void check_appdir_permissions(const char *appdir) {
+    if (nftw(appdir, check_permissions_cb, 64, FTW_PHYS) != 0)
+        permission_problems++;
+    const char *launchers[] = { "AppRun", "AppRun.wrapped" };
+    for (size_t i = 0; i < sizeof(launchers) / sizeof(launchers[0]); i++) {
+        gchar *launcher = g_build_filename(appdir, launchers[i], NULL);
+        struct stat st;
+        if (stat(launcher, &st) == 0) {
+            /* A launcher the owner can execute was already checked above */
+            if (!(st.st_mode & S_IXUSR))
+                require_mode(launcher, &st, 0555);
+        } else if (i == 0) {
+            report_problem(launcher, "does not exist, but every AppDir needs an executable AppRun "
+                                     "(a file or a symlink to one). After creating it", "chmod a+rx");
+        }
+        g_free(launcher);
+    }
+    if (permission_problems > 0) {
+        gchar *quoted = g_shell_quote(appdir);
+        gchar *apprun_path = g_build_filename(appdir, "AppRun", NULL);
+        gchar *apprun = g_shell_quote(apprun_path);
+        g_free(apprun_path);
+        fprintf(stderr, "appimagetool: found %d problem(s) in the AppDir, nothing was changed and no AppImage "
+                        "was created.\n"
+                        "Fix the paths listed above, then run appimagetool again. To fix all read/execute "
+                        "permissions at once, run:\n"
+                        "    chmod -R a+rX %s\n"
+                        "    chmod a+rx %s\n"
+                        "If the files belong to root, prefix the chmod commands with sudo or first take ownership with "
+                        "this command: sudo chown -R $(id -un):$(id -gn) %s\n"
+                        "If you are certain that your AppImage needs these modes, pass --no-check-permissions "
+                        "to skip this check.\n", permission_problems, quoted, apprun, quoted);
+        g_free(apprun);
+        g_free(quoted);
+        exit(1);
+    }
+}
+
 int sfs_mksquashfs(char *source, char *destination, int offset) {
     pid_t pid = fork();
     if (pid == -1) {
@@ -520,6 +635,7 @@ static GOptionEntry entries[] =
     { "comp", 0, 0, G_OPTION_ARG_STRING, &sqfs_comp, "Squashfs compression (default: zstd)", NULL },
     { "mksquashfs-opt", 0, 0, G_OPTION_ARG_STRING_ARRAY, &sqfs_opts, "Argument to pass through to mksquashfs; can be specified multiple times", NULL },
     { "no-appstream", 'n', 0, G_OPTION_ARG_NONE, &no_appstream, "Do not check AppStream metadata", NULL },
+    { "no-check-permissions", 0, 0, G_OPTION_ARG_NONE, &no_check_permissions, "Do not check that AppDir files are readable and AppRun is executable for everyone", NULL },
     { "exclude-file", 0, 0, G_OPTION_ARG_STRING, &exclude_file, _exclude_file_desc, NULL },
     { "runtime-file", 0, 0, G_OPTION_ARG_STRING, &runtime_file, "Runtime file to use", NULL },
     { "sign-key", 0, 0, G_OPTION_ARG_STRING, &sign_key, "Key ID to use for gpg[2] signatures", NULL},
@@ -825,40 +941,43 @@ main (int argc, char *argv[])
         gchar* icon_name = get_desktop_entry(kf, "Icon");
         gchar* icon_file_path = NULL;
         gchar* icon_file_png;
-        gchar* icon_file_svg;
         gchar* icon_file_xpm;
+        /* No .svg: SVG is hard to parse, so consumers of .DirIcon (file managers,
+         * thumbnailers) cannot be expected to handle it reliably; PNG is preferred,
+         * XPM is the last resort */
         icon_file_png = g_strdup_printf("%s/%s.png", source, icon_name);
-        icon_file_svg = g_strdup_printf("%s/%s.svg", source, icon_name);
         icon_file_xpm = g_strdup_printf("%s/%s.xpm", source, icon_name);
         if (g_file_test(icon_file_png, G_FILE_TEST_IS_REGULAR)) {
             icon_file_path = icon_file_png;
-        } else if(g_file_test(icon_file_svg, G_FILE_TEST_IS_REGULAR)) {
-            icon_file_path = icon_file_svg;
         } else if(g_file_test(icon_file_xpm, G_FILE_TEST_IS_REGULAR)) {
             icon_file_path = icon_file_xpm;
-        } else {
-            fprintf (stderr, "%s{.png,.svg,.xpm} defined in desktop file but not found\n", icon_name);
-            fprintf (stderr, "For example, you could put a 256x256 pixel png into\n");
-            gchar *icon_name_with_png = g_strconcat(icon_name, ".png", NULL);
-            gchar *example_path = g_build_filename(source, "/", icon_name_with_png, NULL);
-            fprintf (stderr, "%s\n", example_path);
-            exit(1);
         }
-       
-        /* Check if .DirIcon is present in source AppDir */
+
+        /* Prefer a .DirIcon derived from the desktop file; a real file already
+         * there is kept, any other pre-existing one (symlink) is replaced */
         gchar *diricon_path = g_build_filename(source, ".DirIcon", NULL);
-        
-        if (! g_file_test(diricon_path, G_FILE_TEST_EXISTS)){
-            fprintf (stderr, "Deleting pre-existing .DirIcon\n");
-            g_unlink(diricon_path);
-        }
-        if (! g_file_test(diricon_path, G_FILE_TEST_IS_REGULAR)){
+        gboolean diricon_is_real_file = g_file_test(diricon_path, G_FILE_TEST_IS_REGULAR)
+            && !g_file_test(diricon_path, G_FILE_TEST_IS_SYMLINK);
+        if (icon_file_path != NULL && !diricon_is_real_file) {
+            if (g_file_test(diricon_path, G_FILE_TEST_IS_SYMLINK) && g_unlink(diricon_path) != 0)
+                die("Could not remove pre-existing .DirIcon symlink");
             fprintf (stderr, "Creating .DirIcon symlink based on information from desktop file\n");
-            int res = symlink(basename(icon_file_path), diricon_path);
-            if(res)
+            if (symlink(basename(icon_file_path), diricon_path) != 0)
                 die("Could not symlink .DirIcon");
         }
-        
+
+        /* Fall back to the pre-existing .DirIcon; EXISTS and IS_REGULAR follow
+         * symlinks, so a dangling symlink or a non-file target fails here */
+        if (!g_file_test(diricon_path, G_FILE_TEST_IS_REGULAR)) {
+            if (icon_file_path == NULL) {
+                fprintf (stderr, "%s{.png,.xpm} defined in desktop file but not found\n", icon_name);
+                fprintf (stderr, "For example, you could put a 256x256 pixel png into\n");
+                fprintf (stderr, "%s/%s.png\n", source, icon_name);
+            }
+            fprintf (stderr, "%s is missing, a broken symlink, or not a regular file\n", diricon_path);
+            die("No valid .DirIcon");
+        }
+
         /* Check if AppStream upstream metadata is present in source AppDir */
         if(! no_appstream){
             char application_id[PATH_MAX];
@@ -928,6 +1047,8 @@ main (int argc, char *argv[])
         if (verbose)
             printf("Size of the embedded runtime: %d bytes\n", size);
         
+        if (!no_check_permissions)
+            check_appdir_permissions(source);
         int result = sfs_mksquashfs(source, destination, size);
         if(result != 0)
             die("sfs_mksquashfs error");
