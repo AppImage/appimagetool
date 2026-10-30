@@ -69,7 +69,11 @@ typedef enum {
     fARCH_i686,
     fARCH_x86_64,
     fARCH_armhf,
-    fARCH_aarch64
+    fARCH_aarch64,
+    fARCH_riscv64,
+    fARCH_ppc64,
+    fARCH_ppc64le,
+    fARCH_COUNT
 } fARCH;
 
 static gchar const APPIMAGEIGNORE[] = ".appimageignore";
@@ -402,7 +406,7 @@ static void replacestr(char *line, const char *search, const char *replace)
 int count_archs(bool* archs) {
     int countArchs = 0;
     int i;
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < fARCH_COUNT; i++) {
         countArchs += archs[i];
     }
     return countArchs;
@@ -418,6 +422,14 @@ gchar* archToName(fARCH arch) {
             return "i686";
         case fARCH_x86_64:
             return "x86_64";
+        case fARCH_riscv64:
+            return "riscv64";
+        case fARCH_ppc64:
+            return "ppc64";
+        case fARCH_ppc64le:
+            return "ppc64le";
+        default:
+            return "unknown";
     }
 }
 
@@ -430,11 +442,17 @@ gchar* getArchName(bool* archs) {
         return archToName(fARCH_armhf);
     else if (archs[fARCH_aarch64])
         return archToName(fARCH_aarch64);
+    else if (archs[fARCH_riscv64])
+        return archToName(fARCH_riscv64);
+    else if (archs[fARCH_ppc64])
+        return archToName(fARCH_ppc64);
+    else if (archs[fARCH_ppc64le])
+        return archToName(fARCH_ppc64le);
     else
         return "all";
 }
 
-void extract_arch_from_e_machine_field(int16_t e_machine, const gchar* sourcename, bool* archs) {
+void extract_arch_from_e_machine_field(int16_t e_machine, bool big_endian, const gchar* sourcename, bool* archs) {
     if (e_machine == 3) {
         archs[fARCH_i686] = 1;
         if(verbose)
@@ -457,6 +475,20 @@ void extract_arch_from_e_machine_field(int16_t e_machine, const gchar* sourcenam
         archs[fARCH_aarch64] = 1;
         if(verbose)
             fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(fARCH_aarch64));
+    }
+
+    if (e_machine == 243) {
+        archs[fARCH_riscv64] = 1;
+        if(verbose)
+            fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(fARCH_riscv64));
+    }
+
+    /* EM_PPC64: the byte order tells big endian ppc64 from little endian ppc64le */
+    if (e_machine == 21) {
+        fARCH arch = big_endian ? fARCH_ppc64 : fARCH_ppc64le;
+        archs[arch] = 1;
+        if(verbose)
+            fprintf(stderr, "%s used for determining architecture %s\n", sourcename, archToName(arch));
     }
 }
 
@@ -492,28 +524,51 @@ void extract_arch_from_text(gchar *archname, const gchar* sourcename, bool* arch
                 archs[fARCH_aarch64] = 1;
                 if (verbose)
                     fprintf(stderr, "%s used for determining architecture ARM aarch64\n", sourcename);
+            } else if (g_ascii_strcasecmp("riscv64", archname) == 0) {
+                archs[fARCH_riscv64] = 1;
+                if (verbose)
+                    fprintf(stderr, "%s used for determining architecture RISC-V riscv64\n", sourcename);
+            } else if (g_ascii_strcasecmp("ppc64", archname) == 0 ||
+                       g_ascii_strcasecmp("ppc64be", archname) == 0 ||
+                       g_ascii_strcasecmp("powerpc64", archname) == 0 ||
+                       g_ascii_strcasecmp("powerpc64be", archname) == 0) {
+                archs[fARCH_ppc64] = 1;
+                if (verbose)
+                    fprintf(stderr, "%s used for determining architecture PowerPC ppc64 (big endian)\n", sourcename);
+            } else if (g_ascii_strcasecmp("ppc64le", archname) == 0 ||
+                       g_ascii_strcasecmp("ppc64el", archname) == 0 ||
+                       g_ascii_strcasecmp("powerpc64le", archname) == 0) {
+                archs[fARCH_ppc64le] = 1;
+                if (verbose)
+                    fprintf(stderr, "%s used for determining architecture PowerPC ppc64le (little endian)\n", sourcename);
             }
         }
     }
 }
 
-int16_t read_elf_e_machine_field(const gchar* file_path) {
+int16_t read_elf_e_machine_field(const gchar* file_path, bool* big_endian) {
     int16_t e_machine = 0x00;
+    unsigned char ei_data = 0;
     FILE* file = 0;
     file = fopen(file_path, "rb");
     if (file) {
+        /* EI_DATA: the byte order of the ELF file (2 = ELFDATA2MSB, big endian) */
+        fseek(file, 0x05, SEEK_SET);
+        fread(&ei_data, sizeof(ei_data), 1, file);
         fseek(file, 0x12, SEEK_SET);
         fread(&e_machine, sizeof(e_machine), 1, file);
         fclose(file);
-        e_machine = GINT16_FROM_LE(e_machine);
+        e_machine = (ei_data == 2) ? GINT16_FROM_BE(e_machine) : GINT16_FROM_LE(e_machine);
     }
+    *big_endian = (ei_data == 2);
 
     return e_machine;
 }
 
 void guess_arch_of_file(const gchar *archfile, bool* archs) {
-    int16_t e_machine_field = read_elf_e_machine_field(archfile);
-    extract_arch_from_e_machine_field(e_machine_field, archfile, archs);
+    bool big_endian = false;
+    int16_t e_machine_field = read_elf_e_machine_field(archfile, &big_endian);
+    extract_arch_from_e_machine_field(e_machine_field, big_endian, archfile, archs);
 }
 
 void find_arch(const gchar *real_path, const gchar *pattern, bool* archs) {
@@ -872,7 +927,7 @@ main (int argc, char *argv[])
         }
 
         /* Determine the architecture */
-        bool archs[4] = {0, 0, 0, 0};
+        bool archs[fARCH_COUNT] = {0};
         extract_arch_from_text(getenv("ARCH"), "Environmental variable ARCH", archs);
         if (count_archs(archs) != 1) {
             /* If no $ARCH variable is set check a file */

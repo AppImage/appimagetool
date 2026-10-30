@@ -78,7 +78,7 @@ static off_t read_elf32(FILE* fd)
 
     /* ELF ends either with the table of section headers (SHT) or with a section. */
     sht_end = ehdr.e_shoff + (ehdr.e_shentsize * ehdr.e_shnum);
-    last_section_end = file64_to_cpu(shdr32.sh_offset) + file64_to_cpu(shdr32.sh_size);
+    last_section_end = file32_to_cpu(shdr32.sh_offset) + file32_to_cpu(shdr32.sh_size);
     return sht_end > last_section_end ? sht_end : last_section_end;
 }
 
@@ -123,10 +123,24 @@ bool appimage_get_elf_section_offset_and_length(const char* fname, const char* s
     uint8_t* data;
     int i;
     int fd = open(fname, O_RDONLY);
+    if (fd < 0) {
+        fprintf(stderr, "Could not open %s: %s\n", fname, strerror(errno));
+        return false;
+    }
     size_t map_size = (size_t) lseek(fd, 0, SEEK_END);
 
     data = mmap(NULL, map_size, PROT_READ, MAP_SHARED, fd, 0);
     close(fd);
+    if (data == MAP_FAILED || map_size < EI_NIDENT) {
+        fprintf(stderr, "Could not map %s\n", fname);
+        if (data != MAP_FAILED)
+            munmap(data, map_size);
+        return false;
+    }
+
+    // the byte order of the file, for file16/32/64_to_cpu(): the runtime of
+    // another architecture may have another one (e.g. big endian ppc64 on x86_64)
+    memcpy(ehdr.e_ident, data, EI_NIDENT);
 
     // this trick works as both 32 and 64 bit ELF files start with the e_ident[EI_NINDENT] section
     unsigned char class = data[EI_CLASS];
@@ -136,13 +150,13 @@ bool appimage_get_elf_section_offset_and_length(const char* fname, const char* s
         Elf32_Shdr* shdr;
 
         elf = (Elf32_Ehdr*) data;
-        shdr = (Elf32_Shdr*) (data + ((Elf32_Ehdr*) elf)->e_shoff);
+        shdr = (Elf32_Shdr*) (data + file32_to_cpu(elf->e_shoff));
 
-        char* strTab = (char*) (data + shdr[elf->e_shstrndx].sh_offset);
-        for (i = 0; i < elf->e_shnum; i++) {
-            if (strcmp(&strTab[shdr[i].sh_name], section_name) == 0) {
-                *offset = shdr[i].sh_offset;
-                *length = shdr[i].sh_size;
+        char* strTab = (char*) (data + file32_to_cpu(shdr[file16_to_cpu(elf->e_shstrndx)].sh_offset));
+        for (i = 0; i < file16_to_cpu(elf->e_shnum); i++) {
+            if (strcmp(&strTab[file32_to_cpu(shdr[i].sh_name)], section_name) == 0) {
+                *offset = file32_to_cpu(shdr[i].sh_offset);
+                *length = file32_to_cpu(shdr[i].sh_size);
             }
         }
     } else if (class == ELFCLASS64) {
@@ -150,13 +164,13 @@ bool appimage_get_elf_section_offset_and_length(const char* fname, const char* s
         Elf64_Shdr* shdr;
 
         elf = (Elf64_Ehdr*) data;
-        shdr = (Elf64_Shdr*) (data + elf->e_shoff);
+        shdr = (Elf64_Shdr*) (data + file64_to_cpu(elf->e_shoff));
 
-        char* strTab = (char*) (data + shdr[elf->e_shstrndx].sh_offset);
-        for (i = 0; i < elf->e_shnum; i++) {
-            if (strcmp(&strTab[shdr[i].sh_name], section_name) == 0) {
-                *offset = shdr[i].sh_offset;
-                *length = shdr[i].sh_size;
+        char* strTab = (char*) (data + file64_to_cpu(shdr[file16_to_cpu(elf->e_shstrndx)].sh_offset));
+        for (i = 0; i < file16_to_cpu(elf->e_shnum); i++) {
+            if (strcmp(&strTab[file32_to_cpu(shdr[i].sh_name)], section_name) == 0) {
+                *offset = file64_to_cpu(shdr[i].sh_offset);
+                *length = file64_to_cpu(shdr[i].sh_size);
             }
         }
     } else {
