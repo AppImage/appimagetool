@@ -1296,7 +1296,7 @@ main (int argc, char *argv[])
         }
 
         fprintf(stderr, "Success\n\n");
-        fprintf(stderr, "Please consider submitting your AppImage to AppImageHub, the crowd-sourced\n");
+        fprintf(stderr, "Please consider submitting your AppImage to appimage.github.io, the crowd-sourced\n");
         fprintf(stderr, "central directory of available AppImages, by opening a pull request\n");
         fprintf(stderr, "at https://github.com/AppImage/appimage.github.io\n");
 
