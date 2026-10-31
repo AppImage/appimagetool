@@ -106,7 +106,7 @@ static void die(const char *msg) {
  * ERRORS stop appimagetool (exit code 1, no AppImage): problems that make the
  * AppImage unusable or that cannot be fixed afterwards: the permissions of the
  * AppDir itself (its top-level directory) and of the files that make an AppDir
- * an AppImage (AppRun, .DirIcon, the .desktop file and the icon file in its
+ * an AppImage (AppRun, AppRun.wrapped if present, .DirIcon, the .desktop file and the icon file in its
  * top level), and a missing, broken or SVG .DirIcon.
  *
  * WARNINGS do not stop anything (exit code 0) but are collected and printed
@@ -282,6 +282,9 @@ static void check_appdir_permissions(const char *appdir) {
     gchar *apprun_path = g_build_filename(appdir, "AppRun", NULL);
     gchar *diricon_path = g_build_filename(appdir, ".DirIcon", NULL);
     add_critical_file(apprun_path);
+    gchar *wrapped_path = g_build_filename(appdir, "AppRun.wrapped", NULL);
+    add_critical_file(wrapped_path); /* started by AppRun, so it must be executable, too */
+    g_free(wrapped_path);
     add_critical_file(diricon_path);
     add_critical_file(appdir_icon_file);
     GDir *dir = g_dir_open(appdir, 0, NULL);
@@ -306,7 +309,7 @@ static void check_appdir_permissions(const char *appdir) {
         if (stat(launcher, &st) == 0) {
             /* A launcher the owner can execute was already checked above */
             if (!(st.st_mode & S_IXUSR))
-                require_mode(i == 0, launcher, &st, 0555);
+                require_mode(TRUE, launcher, &st, 0555);
         } else if (i == 0) {
             report_problem(TRUE, launcher, "AppRun does not exist (or is a broken symlink), but every AppDir needs "
                                            "an executable AppRun (a file or a symlink to one). Create it, e.g. a "
