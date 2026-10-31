@@ -154,7 +154,7 @@ static void print_warning_banner(void) {
             "#  appimagetool: %u WARNING%s ABOUT YOUR APPDIR - PLEASE FIX %s\n"
             "################################################################################\n"
             "If these are not fixed, this AppImage would very likely FAIL the automated tests\n"
-            "at https://appimage.github.io (AppImageHub), and may crash with 'Permission\n"
+            "at https://appimage.github.io, and may crash with 'Permission\n"
             "denied' or similar errors for users other than you.\n",
             n, n == 1 ? "" : "S", n == 1 ? "IT" : "THEM");
     if (build_aborted)
@@ -338,7 +338,7 @@ static void check_appdir_permissions(const char *appdir) {
     g_free(apprun_path);
 }
 
-/* .DirIcon is shown by file managers and used by AppImageHub; the AppImage is not
+/* .DirIcon is shown by file managers and used by appimage.github.io; the AppImage is not
  * created if it is missing, a broken symlink, not a regular file, or an SVG. Each
  * message says exactly what is wrong and how to fix it. */
 static void diricon_error(const char *diricon_path, const char *what, const char *fix) {
@@ -405,7 +405,7 @@ static void check_diricon(const char *source, const char *icon_name, const char 
         g_free(q_real);
         diricon_error(diricon_path, what, fix);
     } else {
-        /* Not an error, but unusual: warn like the AppImageHub tests do */
+        /* Not an error, but unusual: warn like the tests at appimage.github.io do */
         unsigned char magic[16] = { 0 };
         FILE *f = fopen(diricon_path, "rb");
         size_t n = f != NULL ? fread(magic, 1, sizeof(magic) - 1, f) : 0;
