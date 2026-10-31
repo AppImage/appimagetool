@@ -101,70 +101,176 @@ static void die(const char *msg) {
 
 /* Generate a squashfs filesystem using mksquashfs on the $PATH 
 * execlp(), execvp(), and execvpe() search on the $PATH */
-/* The runtime of a user other than the packager must be able to read the
- * AppDir content and execute the programs in it, e.g. when a cached launcher
- * was packaged with mode 0770 and owned by root. Modes are only checked, never
- * changed: the packager has to decide how to fix them. Every message names the
- * path, what is wrong and the command that fixes it, because the packager
- * cannot be expected to know how AppImages are mounted. */
-static int permission_problems = 0;
+/* Checks of the AppDir before packaging, in two severities.
+ *
+ * ERRORS stop appimagetool (exit code 1, no AppImage): problems that make the
+ * AppImage unusable or that cannot be fixed afterwards: the permissions of the
+ * AppDir itself (its top-level directory) and of the files that make an AppDir
+ * an AppImage (AppRun, .DirIcon, the .desktop file and the icon file in its
+ * top level), and a missing, broken or SVG .DirIcon.
+ *
+ * WARNINGS do not stop anything (exit code 0) but are collected and printed
+ * together at the very end of the output, where they are easy to find in long
+ * CI logs, because AppImages with these problems fail the automated tests at
+ * https://appimage.github.io. They may become errors in a future version.
+ *
+ * Modes are only checked, never changed: the packager has to decide how to fix
+ * them. Every message names the path, what exactly is wrong and the command
+ * that fixes it, because the packager cannot be expected to know how AppImages
+ * are mounted and run (by other users than the one who packaged them). */
+static int permission_problems = 0;       /* errors */
+static GPtrArray *deferred_warnings = NULL; /* formatted warnings, printed at exit */
+static gboolean mode_warnings = FALSE;    /* any warning that "chmod -R a+rX" fixes */
+static gboolean build_aborted = FALSE;    /* an error stopped appimagetool, no AppImage */
+static gchar *appdir_icon_file = NULL;    /* icon file in the top level, found from Icon= */
 
-static void report_problem(const char *path, const char *what, const char *fix_format, ...) {
+#define MAX_CRITICAL 32
+static struct { dev_t dev; ino_t ino; } critical_files[MAX_CRITICAL];
+static int n_critical_files = 0;
+
+static void add_critical_file(const char *path) {
+    struct stat st;
+    if (n_critical_files < MAX_CRITICAL && path != NULL && stat(path, &st) == 0 && S_ISREG(st.st_mode)) {
+        critical_files[n_critical_files].dev = st.st_dev;
+        critical_files[n_critical_files].ino = st.st_ino;
+        n_critical_files++;
+    }
+}
+
+static gboolean is_critical_file(const struct stat *st) {
+    for (int i = 0; i < n_critical_files; i++)
+        if (critical_files[i].dev == st->st_dev && critical_files[i].ino == st->st_ino)
+            return TRUE;
+    return FALSE;
+}
+
+static void print_warning_banner(void) {
+    if (deferred_warnings == NULL || deferred_warnings->len == 0)
+        return;
+    guint n = deferred_warnings->len;
+    fflush(stdout);
+    fprintf(stderr, "\n"
+            "################################################################################\n"
+            "#  appimagetool: %u WARNING%s ABOUT YOUR APPDIR - PLEASE FIX %s\n"
+            "################################################################################\n"
+            "If these are not fixed, this AppImage would very likely FAIL the automated tests\n"
+            "at https://appimage.github.io (AppImageHub), and may crash with 'Permission\n"
+            "denied' or similar errors for users other than you.\n",
+            n, n == 1 ? "" : "S", n == 1 ? "IT" : "THEM");
+    if (build_aborted)
+        fprintf(stderr, "(These come in addition to the ERROR(S) above, which stopped the build.)\n\n");
+    else
+        fprintf(stderr, "appimagetool exits with code 0 because of warnings only. THIS MAY CHANGE IN A\n"
+                        "FUTURE VERSION, when these warnings may become errors that stop the build.\n\n");
+    for (guint i = 0; i < n; i++)
+        fprintf(stderr, "WARNING %u of %u: %s\n", i + 1, n, (const char *) g_ptr_array_index(deferred_warnings, i));
+    if (mode_warnings)
+        fprintf(stderr, "To fix all read/execute permission warnings at once, run 'chmod -R a+rX' on the\n"
+                        "AppDir and package again (it does not fix setuid/setgid warnings).\n\n");
+    if (!build_aborted)
+        fprintf(stderr, "(Reminder: %u warning%s above, the AppImage was created anyway.)\n", n,
+                n == 1 ? "" : "s");
+    fprintf(stderr, "################################################################################\n");
+    if (getenv("GITHUB_ACTIONS") != NULL) {
+        /* Annotations that show up on the summary page of a GitHub Actions run */
+        for (guint i = 0; i < n; i++) {
+            /* GitHub's escaping of workflow commands: % \r \n */
+            gchar *msg = g_strdup((const char *) g_ptr_array_index(deferred_warnings, i));
+            gchar *p1 = g_strdelimit(g_strdup(msg), "\r", ' ');
+            gchar *p2 = g_strjoinv("%25", g_strsplit(p1, "%", -1));
+            gchar *escaped = g_strjoinv("%0A", g_strsplit(p2, "\n", -1));
+            printf("::warning title=appimagetool: AppDir problem - this AppImage would FAIL tests at "
+                   "appimage.github.io::%s\n", escaped);
+            g_free(escaped);
+            g_free(p2);
+            g_free(p1);
+            g_free(msg);
+        }
+        fflush(stdout);
+    }
+}
+
+/* Reports one problem. Errors are printed immediately, warnings are kept until
+ * the end of the output */
+static void report_problem(gboolean is_error, const char *path, const char *what, const char *fix_format, ...) {
     gchar *quoted = g_shell_quote(path);
     va_list args;
     va_start(args, fix_format);
     gchar *fix = g_strdup_vprintf(fix_format, args);
     va_end(args);
-    fprintf(stderr, "ERROR: %s\n       %s\n       Fix: %s %s\n\n", path, what, fix, quoted);
+    if (is_error) {
+        fprintf(stderr, "ERROR: %s\n       Problem: %s\n       Fix:     %s %s\n\n", path, what, fix, quoted);
+        permission_problems++;
+    } else {
+        if (deferred_warnings == NULL) {
+            deferred_warnings = g_ptr_array_new_with_free_func(g_free);
+            atexit(print_warning_banner);
+        }
+        g_ptr_array_add(deferred_warnings,
+                        g_strdup_printf("%s\n       Problem: %s\n       Fix:     %s %s\n", path, what, fix, quoted));
+    }
     g_free(fix);
     g_free(quoted);
-    permission_problems++;
 }
 
-static void require_mode(const char *path, const struct stat *st, mode_t wanted) {
+static void mode_string(mode_t mode, char *out) {
+    const char *rwx = "rwxrwxrwx";
+    for (int i = 0; i < 9; i++)
+        out[i] = (mode & (0400 >> i)) ? rwx[i] : '-';
+    out[9] = '\0';
+}
+
+static void require_mode(gboolean is_error, const char *path, const struct stat *st, mode_t wanted) {
     mode_t mode = st->st_mode & 07777;
     mode_t missing = wanted & ~mode;
     if (missing == 0)
         return;
-    gchar *what = g_strdup_printf("has mode %04o, but it must be %s%s%s for all users (owner, group and others); "
-                                  "the AppImage is run by users other than you, who would get 'Permission denied'",
-                                  (unsigned) mode,
-                                  (missing & 0444) ? "readable" : "",
-                                  ((missing & 0444) && (missing & 0111)) ? " and " : "",
-                                  (missing & 0111) ? "executable" : "");
-    report_problem(path, what, "chmod %s%s", (missing & 0444) ? "a+r" : "",
+    char have[10], need[10];
+    mode_string(mode, have);
+    mode_string(mode | wanted, need);
+    const char *kind = S_ISDIR(st->st_mode) ? "directory" : (wanted & 0111) ? "program/script" : "file";
+    gchar *what = g_strdup_printf("this %s has mode %04o (%s), so some users (group and/or others) cannot %s it. "
+                                  "AppImages are run by users other than the one who packaged them, who would get "
+                                  "'Permission denied'. It needs at least mode %04o (%s)",
+                                  kind, (unsigned) mode, have,
+                                  (missing & 0444) && (missing & 0111) ? "read and execute"
+                                  : (missing & 0444) ? (S_ISDIR(st->st_mode) ? "list" : "read") : "execute",
+                                  (unsigned) ((mode | wanted) & 0777), need);
+    report_problem(is_error, path, what, "chmod %s%s", (missing & 0444) ? "a+r" : "",
                    (missing & 0111) ? ((missing & 0444) ? ",a+x" : "a+x") : "");
+    if (!is_error)
+        mode_warnings = TRUE;
     g_free(what);
 }
 
 static int check_permissions_cb(const char *path, const struct stat *st, int type, struct FTW *ftw) {
-    (void) ftw;
+    gboolean is_top = ftw->level == 0;
     if (type == FTW_SL || type == FTW_SLN)
         return 0;
     if (type == FTW_DNR || type == FTW_NS) {
-        report_problem(path, "cannot be accessed by the user running appimagetool (unreadable directory or "
+        report_problem(is_top, path, "cannot be accessed by the user running appimagetool (unreadable directory or "
                              "missing entry); if it is owned by another user such as root, run as that user "
                              "or change the owner, e.g. with 'sudo chown -R $(id -un):$(id -gn) <AppDir>'. "
                              "Then", "chmod a+rx");
         return 0;
     }
     if (type == FTW_D || type == FTW_DP)
-        require_mode(path, st, 0555);
+        require_mode(is_top, path, st, 0555);
     else if (S_ISREG(st->st_mode)) {
-        require_mode(path, st, (st->st_mode & S_IXUSR) ? 0555 : 0444);
+        require_mode(is_critical_file(st), path, st, (st->st_mode & S_IXUSR) ? 0555 : 0444);
         /* The setuid/setgid bits cannot work inside an AppImage (it is mounted
          * nosuid); such binaries, e.g. browser sandboxes or fusermount, need
          * a different approach by the packager instead of a masked failure */
         if (st->st_mode & (S_ISUID | S_ISGID)) {
-            gchar *what = g_strdup_printf("has the setuid/setgid bit set (mode %04o). AppImages are mounted "
-                                          "with 'nosuid', so this bit has no effect and the program would run "
-                                          "without the privileges it expects and fail in confusing ways. "
+            gchar *what = g_strdup_printf("this file has the setuid/setgid bit set (mode %04o). AppImages are "
+                                          "mounted with 'nosuid', so this bit has no effect and the program would "
+                                          "run without the privileges it expects and fail in confusing ways. "
                                           "Do not bundle programs that rely on it (e.g. chrome-sandbox, "
                                           "fusermount, sudo); use the host's copy or an approach that works "
                                           "unprivileged (e.g. user namespaces). Only if the program works "
                                           "without the bit, you can clear it",
                                           (unsigned) (st->st_mode & 07777));
-            report_problem(path, what, "chmod u-s,g-s");
+            report_problem(FALSE, path, what, "chmod u-s,g-s");
             g_free(what);
         }
     }
@@ -172,6 +278,25 @@ static int check_permissions_cb(const char *path, const struct stat *st, int typ
 }
 
 static void check_appdir_permissions(const char *appdir) {
+    /* Files that make an AppDir an AppImage: problems with them are errors */
+    gchar *apprun_path = g_build_filename(appdir, "AppRun", NULL);
+    gchar *diricon_path = g_build_filename(appdir, ".DirIcon", NULL);
+    add_critical_file(apprun_path);
+    add_critical_file(diricon_path);
+    add_critical_file(appdir_icon_file);
+    GDir *dir = g_dir_open(appdir, 0, NULL);
+    const gchar *name;
+    while (dir != NULL && (name = g_dir_read_name(dir)) != NULL) {
+        if (g_str_has_suffix(name, ".desktop")) {
+            gchar *p = g_build_filename(appdir, name, NULL);
+            add_critical_file(p);
+            g_free(p);
+        }
+    }
+    if (dir != NULL)
+        g_dir_close(dir);
+    g_free(diricon_path);
+
     if (nftw(appdir, check_permissions_cb, 64, FTW_PHYS) != 0)
         permission_problems++;
     const char *launchers[] = { "AppRun", "AppRun.wrapped" };
@@ -181,19 +306,20 @@ static void check_appdir_permissions(const char *appdir) {
         if (stat(launcher, &st) == 0) {
             /* A launcher the owner can execute was already checked above */
             if (!(st.st_mode & S_IXUSR))
-                require_mode(launcher, &st, 0555);
+                require_mode(i == 0, launcher, &st, 0555);
         } else if (i == 0) {
-            report_problem(launcher, "does not exist, but every AppDir needs an executable AppRun "
-                                     "(a file or a symlink to one). After creating it", "chmod a+rx");
+            report_problem(TRUE, launcher, "AppRun does not exist (or is a broken symlink), but every AppDir needs "
+                                           "an executable AppRun (a file or a symlink to one). Create it, e.g. a "
+                                           "shell script that starts your program, or a symlink to your main "
+                                           "executable, and then run",
+                           "chmod a+rx");
         }
         g_free(launcher);
     }
     if (permission_problems > 0) {
         gchar *quoted = g_shell_quote(appdir);
-        gchar *apprun_path = g_build_filename(appdir, "AppRun", NULL);
         gchar *apprun = g_shell_quote(apprun_path);
-        g_free(apprun_path);
-        fprintf(stderr, "appimagetool: found %d problem(s) in the AppDir, nothing was changed and no AppImage "
+        fprintf(stderr, "appimagetool: found %d ERROR(S) in the AppDir, nothing was changed and no AppImage "
                         "was created.\n"
                         "Fix the paths listed above, then run appimagetool again. To fix all read/execute "
                         "permissions at once, run:\n"
@@ -203,10 +329,105 @@ static void check_appdir_permissions(const char *appdir) {
                         "this command: sudo chown -R $(id -un):$(id -gn) %s\n"
                         "If you are certain that your AppImage needs these modes, pass --no-check-permissions "
                         "to skip this check.\n", permission_problems, quoted, apprun, quoted);
+        build_aborted = TRUE;
         g_free(apprun);
         g_free(quoted);
+        g_free(apprun_path);
         exit(1);
     }
+    g_free(apprun_path);
+}
+
+/* .DirIcon is shown by file managers and used by AppImageHub; the AppImage is not
+ * created if it is missing, a broken symlink, not a regular file, or an SVG. Each
+ * message says exactly what is wrong and how to fix it. */
+static void diricon_error(const char *diricon_path, const char *what, const char *fix) {
+    fprintf(stderr, "ERROR: %s\n       Problem: %s\n       Fix:     %s\n\n", diricon_path, what, fix);
+    fprintf(stderr, "appimagetool: no AppImage was created because .DirIcon is not valid.\n");
+    build_aborted = TRUE;
+    exit(1);
+}
+
+static gboolean file_looks_like_svg(const char *path) {
+    if (g_str_has_suffix(path, ".svg") || g_str_has_suffix(path, ".svgz"))
+        return TRUE;
+    char buf[1025];
+    FILE *f = fopen(path, "rb");
+    if (f == NULL)
+        return FALSE;
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = '\0';
+    return strstr(buf, "<svg") != NULL;
+}
+
+static void check_diricon(const char *source, const char *icon_name, const char *icon_file_path) {
+    (void) icon_file_path;
+    gchar *diricon_path = g_build_filename(source, ".DirIcon", NULL);
+    const char *icon = icon_name != NULL ? icon_name : "<Icon= value>";
+    gchar *png_path = g_strdup_printf("%s/%s.png", source, icon);
+    gchar *q_diricon = g_shell_quote(diricon_path);
+    gchar *q_png = g_shell_quote(png_path);
+    gchar *fix_new_icon = g_strdup_printf("put a PNG icon (256x256 pixels recommended) at %s, i.e. into the top "
+                                          "level of the AppDir with the name from Icon=%s in your .desktop file "
+                                          "(e.g. copy it from usr/share/icons/hicolor/256x256/apps/). "
+                                          "appimagetool then creates .DirIcon itself",
+                                          q_png, icon);
+    struct stat lst, st;
+    if (lstat(diricon_path, &lst) != 0) {
+        gchar *what = g_strdup_printf(".DirIcon does not exist, and no %s.png or %s.xpm was found in the top level of "
+                                      "the AppDir (Icon=%s in the .desktop file) to create it from", icon, icon, icon);
+        diricon_error(diricon_path, what, fix_new_icon);
+    } else if (S_ISLNK(lst.st_mode) && stat(diricon_path, &st) != 0) {
+        char target[PATH_MAX];
+        ssize_t len = readlink(diricon_path, target, sizeof(target) - 1);
+        target[len > 0 ? len : 0] = '\0';
+        gchar *what = g_strdup_printf(".DirIcon is a symlink to '%s', but that target does not exist (broken "
+                                      "symlink). It must point to a file inside the AppDir; paths outside it, such "
+                                      "as /usr/share/..., do not exist on other systems", target);
+        gchar *fix = g_strdup_printf("%s. Then delete the broken symlink with 'rm %s'", fix_new_icon, q_diricon);
+        diricon_error(diricon_path, what, fix);
+    } else if (stat(diricon_path, &st) != 0 || !S_ISREG(st.st_mode)) {
+        gchar *what = g_strdup_printf(".DirIcon is a %s, but it must be a PNG image file (or a symlink to one)",
+                                      S_ISDIR(st.st_mode) ? "directory" : "special file");
+        gchar *fix = g_strdup_printf("delete it with 'rm -r %s', then %s", q_diricon, fix_new_icon);
+        diricon_error(diricon_path, what, fix);
+    } else if (file_looks_like_svg(diricon_path)) {
+        char resolved[PATH_MAX];
+        const char *real = realpath(diricon_path, resolved) != NULL ? resolved : diricon_path;
+        gchar *q_real = g_shell_quote(real);
+        gchar *what = g_strdup_printf(".DirIcon is an SVG image (%s). SVG is hard to parse, so file managers and "
+                                      "thumbnailers cannot be expected to handle it; .DirIcon must be a PNG", real);
+        gchar *fix = g_strdup_printf("convert it to a PNG with 'rsvg-convert -w 256 -h 256 %s -o %s' (or "
+                                     "ImageMagick/Inkscape) and delete the SVG .DirIcon with 'rm %s'; "
+                                     "appimagetool then creates .DirIcon from %s.png",
+                                     q_real, q_png, q_diricon, icon);
+        g_free(q_real);
+        diricon_error(diricon_path, what, fix);
+    } else {
+        /* Not an error, but unusual: warn like the AppImageHub tests do */
+        unsigned char magic[16] = { 0 };
+        FILE *f = fopen(diricon_path, "rb");
+        size_t n = f != NULL ? fread(magic, 1, sizeof(magic) - 1, f) : 0;
+        if (f != NULL)
+            fclose(f);
+        if (n < 8 || (memcmp(magic, "\x89PNG", 4) != 0 && memcmp(magic, "/* XPM */", 9) != 0)) {
+            if (deferred_warnings == NULL) {
+                deferred_warnings = g_ptr_array_new_with_free_func(g_free);
+                atexit(print_warning_banner);
+            }
+            g_ptr_array_add(deferred_warnings,
+                            g_strdup_printf("%s\n       Problem: .DirIcon is neither a PNG nor an XPM image, so "
+                                            "file managers may not be able to show it\n       Fix:     replace it "
+                                            "with a PNG image, e.g. %s\n",
+                                            diricon_path, fix_new_icon));
+        }
+    }
+    g_free(fix_new_icon);
+    g_free(png_path);
+    g_free(q_png);
+    g_free(q_diricon);
+    g_free(diricon_path);
 }
 
 int sfs_mksquashfs(char *source, char *destination, int offset) {
@@ -966,17 +1187,10 @@ main (int argc, char *argv[])
                 die("Could not symlink .DirIcon");
         }
 
-        /* Fall back to the pre-existing .DirIcon; EXISTS and IS_REGULAR follow
-         * symlinks, so a dangling symlink or a non-file target fails here */
-        if (!g_file_test(diricon_path, G_FILE_TEST_IS_REGULAR)) {
-            if (icon_file_path == NULL) {
-                fprintf (stderr, "%s{.png,.xpm} defined in desktop file but not found\n", icon_name);
-                fprintf (stderr, "For example, you could put a 256x256 pixel png into\n");
-                fprintf (stderr, "%s/%s.png\n", source, icon_name);
-            }
-            fprintf (stderr, "%s is missing, a broken symlink, or not a regular file\n", diricon_path);
-            die("No valid .DirIcon");
-        }
+        /* Errors if .DirIcon is missing, broken, not a file or an SVG; each one
+         * says what is wrong and how to fix it */
+        appdir_icon_file = icon_file_path != NULL ? g_strdup(icon_file_path) : NULL;
+        check_diricon(source, icon_name, icon_file_path);
 
         /* Check if AppStream upstream metadata is present in source AppDir */
         if(! no_appstream){
