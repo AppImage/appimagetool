@@ -1,0 +1,7 @@
+version: 2
+updates:
+  # automatically generate PRs to update actions, e.g., checkout, to the latest release
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
