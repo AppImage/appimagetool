@@ -1575,6 +1575,7 @@ main (int argc, char *argv[])
                 }
 
                 if (!g_subprocess_wait_check(proc, NULL, &error)) {
+                    g_object_unref(proc);
                     die("zsyncmake returned abnormal exit code: %s\n", error->message);
                 }
 
