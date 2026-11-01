@@ -94,9 +94,86 @@ gchar *file_url;
 
 // #####################################################################
 
-static void die(const char *msg) {
-    fprintf(stderr, "%s\n", msg);
-    exit(1);
+// used to change logging behavior in GitHub actions to annotate builds in the UI
+// this should help people notice problems and fix them rather than ignore them
+static int running_in_github_actions(void) {
+    const char *value = getenv("GITHUB_ACTIONS");
+    return value != NULL && strcmp(value, "true") == 0;
+}
+
+typedef enum {
+    LOG_DEBUG,
+    LOG_INFO,
+    LOG_WARNING,
+    LOG_ERROR
+} log_level;
+
+typedef struct {
+    const char *github_command;
+    const char *fallback_prefix;
+} log_level_info;
+
+static const log_level_info LOG_LEVELS[] = {
+    [LOG_DEBUG] = { .github_command = NULL, .fallback_prefix = "DEBUG" },
+    [LOG_INFO] = { .github_command = NULL, .fallback_prefix = "INFO" },
+    [LOG_WARNING] = { .github_command = "warning", .fallback_prefix = "WARNING" },
+    [LOG_ERROR]   = { .github_command = "error",   .fallback_prefix = "ERROR"   },
+};
+
+static void log_message(const log_level level, const char *fmt, const va_list ap) {
+    const log_level_info *info = &LOG_LEVELS[level];
+    assert(info != NULL);
+
+    if (running_in_github_actions() && info->github_command != NULL) {
+        fprintf(stderr, "::%s::", info->github_command);
+    } else {
+        fprintf(stderr, "%s: ", info->fallback_prefix);
+    }
+
+    // this is plain C, therefore a lot of boilerplate code is needed
+    vfprintf(stderr, fmt, ap);
+    fputc('\n', stderr);
+}
+
+static void log_debug(const char *fmt, ...) {
+    // this is plain C, therefore a lot of boilerplate code is needed
+    va_list ap;
+    va_start(ap, fmt);
+    log_message(LOG_DEBUG, fmt, ap);
+    va_end(ap);
+}
+
+static void log_info(const char *fmt, ...) {
+    // this is plain C, therefore a lot of boilerplate code is needed
+    va_list ap;
+    va_start(ap, fmt);
+    log_message(LOG_INFO, fmt, ap);
+    va_end(ap);
+}
+
+static void log_warning(const char *fmt, ...) {
+    // this is plain C, therefore a lot of boilerplate code is needed
+    va_list ap;
+    va_start(ap, fmt);
+    log_message(LOG_WARNING, fmt, ap);
+    va_end(ap);
+}
+
+static void log_error(const char *fmt, ...) {
+    // this is plain C, therefore a lot of boilerplate code is needed
+    va_list ap;
+    va_start(ap, fmt);
+    log_message(LOG_ERROR, fmt, ap);
+    va_end(ap);
+}
+
+static void die(const char *fmt, ...) {
+    // this is plain C, therefore a lot of boilerplate code is needed
+    va_list ap;
+    va_start(ap, fmt);
+    log_error(fmt, ap);
+    va_end(ap);
+    exit(EXIT_FAILURE);
 }
 
 /* Generate a squashfs filesystem using mksquashfs on the $PATH 
