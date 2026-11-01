@@ -410,7 +410,7 @@ static void check_appdir_permissions(const char *appdir) {
         g_free(apprun);
         g_free(quoted);
         g_free(apprun_path);
-        exit(1);
+        exit(EXIT_FAILURE);
     }
     g_free(apprun_path);
 }
@@ -888,9 +888,7 @@ bool readFile(char* filename, size_t* size, char** buffer) {
 int run_external(const char *filename, char *const argv []) {
     int pid = fork();
     if (pid < 0) {
-        g_print("run_external: fork failed");
-        // fork failed
-        exit(1);
+        die("run_external: fork failed");
     } else if (pid == 0) {
         // blocks env defined in resources/AppRun
         unsetenv("LD_LIBRARY_PATH");
@@ -902,8 +900,7 @@ int run_external(const char *filename, char *const argv []) {
         // runs command
         execv(filename, argv);
         // execv(3) returns, indicating error
-        g_print("run_external: subprocess execv(3) got error %s", g_strerror(errno));
-        exit(1);
+        die("run_external: subprocess execv(3) got error %s", g_strerror(errno));
     } else {
         int wstatus;
         if (waitpid(pid, &wstatus, 0) == -1) {
@@ -1006,8 +1003,7 @@ main (int argc, char *argv[])
         int ret;
         ret = chdir(owd_env);
         if (ret != 0){
-            fprintf(stderr, "Could not cd into %s\n", owd_env);
-            exit(1);
+            die("Could not cd into %s\n", owd_env);
         }
     }
 
@@ -1026,8 +1022,7 @@ main (int argc, char *argv[])
     // g_option_context_add_group (context, gtk_get_option_group (TRUE));
     if (!g_option_context_parse (context, &argc, &argv, &error))
     {
-        fprintf(stderr, "Option parsing failed: %s\n", error->message);
-        exit(1);
+        die("Option parsing failed: %s\n", error->message);
     }
 
     if (file_url && strlen(file_url) == 0) 
@@ -1054,16 +1049,15 @@ main (int argc, char *argv[])
         // build path relative to appimagetool binary
         char *appimagetoolDirectory = dirname(realpath("/proc/self/exe", NULL));
         if (!appimagetoolDirectory) {
-            g_print("Could not access /proc/self/exe\n");
-            exit(1);
+            die("Could not access /proc/self/exe");
         }
 
         pathToMksquashfs = g_build_filename(appimagetoolDirectory, "..", AUXILIARY_FILES_DESTINATION, "mksquashfs", NULL);
 
         if (!g_file_test(pathToMksquashfs, G_FILE_TEST_EXISTS | G_FILE_TEST_IS_EXECUTABLE)) {
-            g_printf("No such file or directory: %s\n", pathToMksquashfs);
+            log_error("No such file or directory: %s\n", pathToMksquashfs);
             g_free(pathToMksquashfs);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
     }
 #endif
@@ -1146,9 +1140,7 @@ main (int argc, char *argv[])
 
         if(g_find_program_in_path ("desktop-file-validate")) {
             if(validate_desktop_file(desktop_file) != 0){
-                fprintf(stderr, "ERROR: Desktop file contains errors. Please fix them. Please see\n");
-                fprintf(stderr, "       https://specifications.freedesktop.org/desktop-entry-spec/latest/index.html");
-                die("       for more information.");
+                die("Desktop file contains  errors. Please fix them. Please see https://specifications.freedesktop.org/desktop-entry-spec/latest/index.html for more information.");
             }
         }
 
@@ -1228,8 +1220,7 @@ main (int argc, char *argv[])
             g_key_file_set_string(kf, G_KEY_FILE_DESKTOP_GROUP, "X-AppImage-Version", version_env);
 
             if (!g_key_file_save_to_file(kf, desktop_file, NULL)) {
-                fprintf(stderr, "Could not save modified desktop file\n");
-                exit(1);
+                die("Could not save modified desktop file");
             }
         }
 
@@ -1357,8 +1348,7 @@ main (int argc, char *argv[])
 
         fprintf (stderr, "Marking the AppImage as executable...\n");
         if (chmod (destination, 0755) < 0) {
-            printf("Could not set executable bit, aborting\n");
-            exit(1);
+            die("Could not set executable bit, aborting");
         }
         
         /* If the user has not provided update information but we know this is a CI build,
@@ -1501,13 +1491,11 @@ main (int argc, char *argv[])
             static const unsigned long section_size = 16;
 
             if (digest_md5_length < section_size) {
-                fprintf(
-                    stderr,
+                die(
                     ".digest_md5 section in runtime's ELF header is too small"
-                    "(found %lu bytes, minimum required: %lu bytes)\n",
+                    "(found %lu bytes, minimum required: %lu bytes)",
                     digest_md5_length, section_size
                 );
-                exit(1);
             }
 
             char digest_buffer[section_size];
@@ -1571,14 +1559,11 @@ main (int argc, char *argv[])
                 GSubprocess* proc = g_subprocess_newv(zsyncmake_command, flags, &error);
 
                 if (proc == NULL) {
-                    fprintf(stderr, "ERROR: failed to create zsyncmake process: %s\n", error->message);
-                    exit(1);
+                    die("failed to create zsyncmake process: %s\n", error->message);
                 }
 
                 if (!g_subprocess_wait_check(proc, NULL, &error)) {
-                    fprintf(stderr, "ERROR: zsyncmake returned abnormal exit code: %s\n", error->message);
-                    g_object_unref(proc);
-                    exit(1);
+                    die("zsyncmake returned abnormal exit code: %s\n", error->message);
                 }
 
                 g_object_unref(proc);
@@ -1597,8 +1582,7 @@ main (int argc, char *argv[])
         die("To be implemented");
         return 1;
     } else {
-        fprintf(stderr, "Error: no such file or directory: %s\n", remaining_args[0]);
-        return 1;
+        die("no such file or directory: %s\n", remaining_args[0]);
     }
 
     // should never be reached
