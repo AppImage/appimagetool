@@ -341,11 +341,9 @@ static void check_appdir_permissions(const char *appdir) {
 /* .DirIcon is shown by file managers and used by appimage.github.io; the AppImage is not
  * created if it is missing, a broken symlink, not a regular file, or an SVG. Each
  * message says exactly what is wrong and how to fix it. */
-static void diricon_error(const char *diricon_path, const char *what, const char *fix) {
+static void diricon_warning(const char *diricon_path, const char *what, const char *fix) {
     fprintf(stderr, "ERROR: %s\n       Problem: %s\n       Fix:     %s\n\n", diricon_path, what, fix);
-    fprintf(stderr, "appimagetool: no AppImage was created because .DirIcon is not valid.\n");
-    build_aborted = TRUE;
-    exit(1);
+    fprintf(stderr, "appimagetool: AppImage was created although .DirIcon is not valid. In a future release, appimagetool will refuse to build the AppImage.\n");
 }
 
 static gboolean file_looks_like_svg(const char *path) {
@@ -361,6 +359,7 @@ static gboolean file_looks_like_svg(const char *path) {
     return strstr(buf, "<svg") != NULL;
 }
 
+// note: will be enforced in a future release!
 static void check_diricon(const char *source, const char *icon_name, const char *icon_file_path) {
     (void) icon_file_path;
     gchar *diricon_path = g_build_filename(source, ".DirIcon", NULL);
@@ -377,7 +376,7 @@ static void check_diricon(const char *source, const char *icon_name, const char 
     if (lstat(diricon_path, &lst) != 0) {
         gchar *what = g_strdup_printf(".DirIcon does not exist, and no %s.png or %s.xpm was found in the top level of "
                                       "the AppDir (Icon=%s in the .desktop file) to create it from", icon, icon, icon);
-        diricon_error(diricon_path, what, fix_new_icon);
+        diricon_warning(diricon_path, what, fix_new_icon);
     } else if (S_ISLNK(lst.st_mode) && stat(diricon_path, &st) != 0) {
         char target[PATH_MAX];
         ssize_t len = readlink(diricon_path, target, sizeof(target) - 1);
@@ -386,12 +385,12 @@ static void check_diricon(const char *source, const char *icon_name, const char 
                                       "symlink). It must point to a file inside the AppDir; paths outside it, such "
                                       "as /usr/share/..., do not exist on other systems", target);
         gchar *fix = g_strdup_printf("%s. Then delete the broken symlink with 'rm %s'", fix_new_icon, q_diricon);
-        diricon_error(diricon_path, what, fix);
+        diricon_warning(diricon_path, what, fix);
     } else if (stat(diricon_path, &st) != 0 || !S_ISREG(st.st_mode)) {
         gchar *what = g_strdup_printf(".DirIcon is a %s, but it must be a PNG image file (or a symlink to one)",
                                       S_ISDIR(st.st_mode) ? "directory" : "special file");
         gchar *fix = g_strdup_printf("delete it with 'rm -r %s', then %s", q_diricon, fix_new_icon);
-        diricon_error(diricon_path, what, fix);
+        diricon_warning(diricon_path, what, fix);
     } else if (file_looks_like_svg(diricon_path)) {
         char resolved[PATH_MAX];
         const char *real = realpath(diricon_path, resolved) != NULL ? resolved : diricon_path;
@@ -403,7 +402,7 @@ static void check_diricon(const char *source, const char *icon_name, const char 
                                      "appimagetool then creates .DirIcon from %s.png",
                                      q_real, q_png, q_diricon, icon);
         g_free(q_real);
-        diricon_error(diricon_path, what, fix);
+        diricon_warning(diricon_path, what, fix);
     } else {
         /* Not an error, but unusual: warn like the tests at appimage.github.io do */
         unsigned char magic[16] = { 0 };
