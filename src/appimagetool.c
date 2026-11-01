@@ -286,7 +286,7 @@ static void report_problem(gboolean is_error, const char *path, const char *what
     gchar *fix = g_strdup_vprintf(fix_format, args);
     va_end(args);
     if (is_error) {
-        fprintf(stderr, "ERROR: %s\n       Problem: %s\n       Fix:     %s %s\n\n", path, what, fix, quoted);
+        log_error("%s\n       Problem: %s\n       Fix:     %s %s\n\n", path, what, fix, quoted);
         permission_problems++;
     } else {
         if (deferred_warnings == NULL) {
@@ -429,8 +429,8 @@ static void check_appdir_permissions(const char *appdir) {
  * created if it is missing, a broken symlink, not a regular file, or an SVG. Each
  * message says exactly what is wrong and how to fix it. */
 static void diricon_warning(const char *diricon_path, const char *what, const char *fix) {
-    fprintf(stderr, "ERROR: %s\n       Problem: %s\n       Fix:     %s\n\n", diricon_path, what, fix);
-    fprintf(stderr, "appimagetool: AppImage will be created although .DirIcon is not valid. In a future release, appimagetool will refuse to build the AppImage.\n");
+    log_error("%s\n       Problem: %s\n       Fix:     %s\n\n", diricon_path, what, fix);
+    log_warning("appimagetool: AppImage will be created although .DirIcon is not valid. In a future release, appimagetool will refuse to build the AppImage.\n");
 }
 
 static gboolean file_looks_like_svg(const char *path) {
@@ -602,7 +602,7 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
         // if an exclude file has been passed on the command line, should be used, too
         if (exclude_file != 0 && strlen(exclude_file) > 0) {
             if (access(exclude_file, F_OK) < 0) {
-                printf("WARNING: exclude file %s not found!", exclude_file);
+                log_warning("exclude file %s not found!", exclude_file);
                 return -1;
             }
 
@@ -636,7 +636,7 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
         perror("execvp(\"mksquashfs\") failed");
 #else
         execvp(pathToMksquashfs, args);
-        fprintf(stderr, "execvp(\"%s\") failed: %s\n", pathToMksquashfs, strerror(errno));
+        log_error("execvp(\"%s\") failed: %s\n", pathToMksquashfs, strerror(errno));
 #endif
         return -1; // exec never returns
     }
@@ -1074,14 +1074,14 @@ main (int argc, char *argv[])
     if(! g_find_program_in_path ("desktop-file-validate"))
         die("desktop-file-validate command is missing, please install it");
     if(! g_find_program_in_path ("zsyncmake"))
-        g_print("WARNING: zsyncmake command is missing, please install it if you want to use binary delta updates\n");
+        log_warning("zsyncmake command is missing, please install it if you want to use binary delta updates\n");
     if(! no_appstream)
         if(! g_find_program_in_path ("appstreamcli"))
-            g_print("WARNING: appstreamcli command is missing, please install it if you want to use AppStream metadata\n");
+            log_warning("appstreamcli command is missing, please install it if you want to use AppStream metadata\n");
     if(! g_find_program_in_path ("gpg2") && ! g_find_program_in_path ("gpg"))
-        g_print("WARNING: gpg2 or gpg command is missing, please install it if you want to create digital signatures\n");
+        log_warning("gpg2 or gpg command is missing, please install it if you want to create digital signatures\n");
     if(! g_find_program_in_path ("sha256sum") && ! g_find_program_in_path ("shasum"))
-        g_print("WARNING: sha256sum or shasum command is missing, please install it if you want to create digital signatures\n");
+        log_warning("sha256sum or shasum command is missing, please install it if you want to create digital signatures\n");
     
     if(!&remaining_args[0])
         die("SOURCE is missing");
@@ -1179,12 +1179,12 @@ main (int argc, char *argv[])
             find_arch(source, "*.so.*", archs);
             int countArchs = count_archs(archs);
             if (countArchs != 1) {
-                if (countArchs < 1)
-                    fprintf(stderr, "Unable to guess the architecture of the AppDir source directory \"%s\"\n", remaining_args[0]);
-                else
-                    fprintf(stderr, "More than one architectures were found of the AppDir source directory \"%s\"\n", remaining_args[0]);
-                fprintf(stderr, "A valid architecture with the ARCH environmental variable should be provided\ne.g. ARCH=x86_64 %s", argv[0]),
-                        die(" ...");
+                if (countArchs < 1) {
+                    log_error("Unable to guess the architecture of the AppDir source directory \"%s\"", remaining_args[0]);
+                } else {
+                    log_error("More than one architectures were found of the AppDir source directory \"%s\"", remaining_args[0]);
+                }
+                die("A valid architecture with the ARCH environmental variable should be provided, e.g. ARCH=x86_64 %s...", argv[0]);
             }
         }
         gchar* arch = getArchName(archs);
@@ -1276,11 +1276,13 @@ main (int argc, char *argv[])
             replacestr(application_id, ".desktop", ".appdata.xml");
             gchar *appdata_path = g_build_filename(source, "/usr/share/metainfo/", application_id, NULL);
             if (! g_file_test(appdata_path, G_FILE_TEST_IS_REGULAR)){
-                fprintf (stderr, "WARNING: AppStream upstream metadata is missing, please consider creating it\n");
-                fprintf (stderr, "         in usr/share/metainfo/%s\n", application_id);
-                fprintf (stderr, "         Please see https://www.freedesktop.org/software/appstream/docs/chap-Quickstart.html#sect-Quickstart-DesktopApps\n");
-                fprintf (stderr, "         for more information or use the generator at\n");
-                fprintf (stderr, "         https://docs.appimage.org/packaging-guide/optional/appstream.html#using-the-appstream-generator\n");
+                log_warning(
+                    "AppStream upstream metadata is missing, please consider creating it in usr/share/metainfo/%s."
+                    "Please see https://www.freedesktop.org/software/appstream/docs/chap-Quickstart.html#sect-Quickstart-DesktopApps"
+                    "for more information or use the generator at"
+                    "https://docs.appimage.org/packaging-guide/optional/appstream.html#using-the-appstream-generator",
+                    application_id
+                );
             } else {
                 fprintf (stderr, "AppStream upstream metadata found in usr/share/metainfo/%s\n", application_id);
                 /* Use ximion's appstreamcli to make sure that desktop file and appdata match together */
