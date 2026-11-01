@@ -249,32 +249,15 @@ static void print_warning_banner(void) {
     else
         fprintf(stderr, "appimagetool exits with code 0 because of warnings only. THIS MAY CHANGE IN A\n"
                         "FUTURE VERSION, when these warnings may become errors that stop the build.\n\n");
-    for (guint i = 0; i < n; i++)
-        fprintf(stderr, "WARNING %u of %u: %s\n", i + 1, n, (const char *) g_ptr_array_index(deferred_warnings, i));
+    for (guint i = 0; i < n; i++) {
+        log_warning("Problem %u/%u: %s", i + 1, n, (const char *) g_ptr_array_index(deferred_warnings, i));
+    }
     if (mode_warnings)
         fprintf(stderr, "To fix all read/execute permission warnings at once, run 'chmod -R a+rX' on the\n"
                         "AppDir and package again (it does not fix setuid/setgid warnings).\n\n");
     if (!build_aborted)
         fprintf(stderr, "(Reminder: %u warning%s above, the AppImage was created anyway.)\n", n,
                 n == 1 ? "" : "s");
-    fprintf(stderr, "################################################################################\n");
-    if (getenv("GITHUB_ACTIONS") != NULL) {
-        /* Annotations that show up on the summary page of a GitHub Actions run */
-        for (guint i = 0; i < n; i++) {
-            /* GitHub's escaping of workflow commands: % \r \n */
-            gchar *msg = g_strdup((const char *) g_ptr_array_index(deferred_warnings, i));
-            gchar *p1 = g_strdelimit(g_strdup(msg), "\r", ' ');
-            gchar *p2 = g_strjoinv("%25", g_strsplit(p1, "%", -1));
-            gchar *escaped = g_strjoinv("%0A", g_strsplit(p2, "\n", -1));
-            printf("::warning title=appimagetool: AppDir problem - this AppImage would FAIL tests at "
-                   "appimage.github.io::%s\n", escaped);
-            g_free(escaped);
-            g_free(p2);
-            g_free(p1);
-            g_free(msg);
-        }
-        fflush(stdout);
-    }
 }
 
 /* Reports one problem. Errors are printed immediately, warnings are kept until
