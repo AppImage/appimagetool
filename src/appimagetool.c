@@ -343,7 +343,7 @@ static void check_appdir_permissions(const char *appdir) {
  * message says exactly what is wrong and how to fix it. */
 static void diricon_warning(const char *diricon_path, const char *what, const char *fix) {
     fprintf(stderr, "ERROR: %s\n       Problem: %s\n       Fix:     %s\n\n", diricon_path, what, fix);
-    fprintf(stderr, "appimagetool: AppImage was created although .DirIcon is not valid. In a future release, appimagetool will refuse to build the AppImage.\n");
+    fprintf(stderr, "appimagetool: AppImage will be created although .DirIcon is not valid. In a future release, appimagetool will refuse to build the AppImage.\n");
 }
 
 static gboolean file_looks_like_svg(const char *path) {
