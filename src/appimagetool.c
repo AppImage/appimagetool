@@ -101,6 +101,15 @@ static int running_in_github_actions(void) {
     return value != NULL && strcmp(value, "true") == 0;
 }
 
+// mark fmt as a printf-style format string to, e.g., IDEs, and compilers themselves
+// only GCC and Clang support __attribute__, therefore using a macro to only declare these to maximize compiler compatibility
+#if defined(__GNUC__) || defined(__clang__)
+#  define ATTR_PRINTF(fmt_idx, arg_idx) \
+      __attribute__((format(printf, fmt_idx, arg_idx)))
+#else
+#  define ATTR_PRINTF(fmt_idx, arg_idx)
+#endif
+
 typedef enum {
     LOG_DEBUG,
     LOG_INFO,
@@ -120,7 +129,8 @@ static const log_level_info LOG_LEVELS[] = {
     [LOG_ERROR]   = { .github_command = "error",   .fallback_prefix = "ERROR"   },
 };
 
-static void log_message(const log_level level, const char *fmt, const va_list ap) {
+static void ATTR_PRINTF(2, 0) log_message(const log_level level, const char *fmt, const va_list ap)
+{
     const log_level_info *info = &LOG_LEVELS[level];
     assert(info != NULL);
 
@@ -135,7 +145,7 @@ static void log_message(const log_level level, const char *fmt, const va_list ap
     fputc('\n', stderr);
 }
 
-static void log_debug(const char *fmt, ...) {
+static void ATTR_PRINTF(1, 2) log_debug(const char *fmt, ...) {
     // this is plain C, therefore a lot of boilerplate code is needed
     va_list ap;
     va_start(ap, fmt);
@@ -143,7 +153,7 @@ static void log_debug(const char *fmt, ...) {
     va_end(ap);
 }
 
-static void log_info(const char *fmt, ...) {
+static void ATTR_PRINTF(1, 2) log_info(const char *fmt, ...) {
     // this is plain C, therefore a lot of boilerplate code is needed
     va_list ap;
     va_start(ap, fmt);
@@ -151,7 +161,7 @@ static void log_info(const char *fmt, ...) {
     va_end(ap);
 }
 
-static void log_warning(const char *fmt, ...) {
+static void ATTR_PRINTF(1, 2) log_warning(const char *fmt, ...) {
     // this is plain C, therefore a lot of boilerplate code is needed
     va_list ap;
     va_start(ap, fmt);
@@ -159,7 +169,7 @@ static void log_warning(const char *fmt, ...) {
     va_end(ap);
 }
 
-static void log_error(const char *fmt, ...) {
+static void ATTR_PRINTF(1, 2) log_error(const char *fmt, ...) {
     // this is plain C, therefore a lot of boilerplate code is needed
     va_list ap;
     va_start(ap, fmt);
@@ -167,7 +177,7 @@ static void log_error(const char *fmt, ...) {
     va_end(ap);
 }
 
-static void die(const char *fmt, ...) {
+static void ATTR_PRINTF(1, 2) die(const char *fmt, ...) {
     // this is plain C, therefore a lot of boilerplate code is needed
     va_list ap;
     va_start(ap, fmt);
