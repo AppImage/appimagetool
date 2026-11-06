@@ -55,6 +55,12 @@ If you are on an Intel machine and would like to cross-compile for ARM:
 * Prepare the Docker system for cross-compiling with `docker run --rm --privileged multiarch/qemu-user-static --reset -p yes`, then run
 * For 64 bit ARM, run `ARCH=aarch64 bash ./ci/build-in-docker.sh`
 * For 32 bit ARM, run `ARCH=armhf bash ./ci/build-in-docker.sh`
+* For 64 bit RISC-V, run `ARCH=riscv64 bash ./ci/build-in-docker.sh`
+* For 64 bit little endian POWER, run `ARCH=ppc64le bash ./ci/build-in-docker.sh`
+
+Big endian 64 bit POWER (`ppc64`) has no Alpine Linux: run `ARCH=ppc64 bash ./ci/build-in-debian.sh` as root in a Debian ports (`sid`) ppc64 system, as the CI does (job `build-debian-ports`). That appimagetool is linked dynamically against the glibc of Debian `sid` at build time, with the other libraries in the AppImage, so unlike the static builds of the other architectures it needs a ppc64 system with a glibc at least as new.
+
+The runtimes for `riscv64`, `ppc64le` and `ppc64` come from the [type2-runtime](https://github.com/AppImage/type2-runtime/releases) releases that have them; with an older release, pass one with `--runtime-file`.
 
 ## Changelog
 

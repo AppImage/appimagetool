@@ -19,6 +19,12 @@ jobs:
             RUNS_ON: ubuntu-24.04-arm
           - ARCH: armhf
             RUNS_ON: ubuntu-24.04-arm
+          - ARCH: riscv64
+            RUNS_ON: ubuntu-24.04
+            QEMU: true
+          - ARCH: ppc64le
+            RUNS_ON: ubuntu-24.04
+            QEMU: true
 
     name: Build ${{ matrix.ARCH }}
 
@@ -32,6 +38,11 @@ jobs:
         with:
           submodules: 'recursive'
 
+      # GitHub has no RISC-V and POWER runners: the build container runs emulated
+      - name: Set up QEMU
+        if: ${{ matrix.QEMU }}
+        uses: docker/setup-qemu-action@v4
+
       - name: Build in Docker container
         run: |
           bash -ex ci/build-in-docker.sh
@@ -44,10 +55,74 @@ jobs:
           path: |
             **/appimagetool*.AppImage*
 
+  # Architectures without Alpine Linux (big endian ppc64): built in Debian ports,
+  # linked dynamically, with the libraries but glibc in the AppImage
+  # (ci/build-in-debian.sh), emulated by QEMU
+  build-debian-ports:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ARCH: ppc64
+            PLATFORM: linux/ppc64
+
+    name: Build ${{ matrix.ARCH }} (Debian ports)
+
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+          fetch-depth: 0       # GIT_VERSION
+
+      # debian-ports has no Docker images: the root file system is made with
+      # debootstrap (its second stage runs emulated) and imported. The binfmt
+      # image of setup-qemu-action has no big endian ppc64: qemu-user-static of Ubuntu
+      - name: Make the Debian ports image
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends debootstrap qemu-user-static
+          # the keyring of Ubuntu is older than the key that signs sid today. The pool of
+          # Debian keeps only the current version of the package: its file name comes
+          # from the package index, so that a new upload of the keyring breaks nothing
+          POOL=$(curl -fsSL https://deb.debian.org/debian/dists/sid/main/binary-all/Packages.xz | xz -d \
+            | awk '/^Package: debian-ports-archive-keyring$/ { f = 1 } f && /^Filename:/ { print $2; f = 0 }')
+          test -n "$POOL"
+          KEYRING=$(basename "$POOL")
+          curl -fsSLO "https://deb.debian.org/debian/$POOL"
+          dpkg-deb -x $KEYRING keyring
+          sudo debootstrap --arch=${{ matrix.ARCH }} --variant=minbase \
+            --include=debian-ports-archive-keyring \
+            --keyring=$PWD/keyring/usr/share/keyrings/debian-ports-archive-keyring.gpg \
+            sid rootfs http://ftp.ports.debian.org/debian-ports
+          sudo tar -C rootfs -c . | docker import --platform ${{ matrix.PLATFORM }} - debian-ports
+          sudo rm -rf rootfs keyring $KEYRING
+
+      - name: Build in the Debian ports container
+        run: |
+          mkdir -p out
+          docker run --rm --platform ${{ matrix.PLATFORM }} -v "$PWD":/source -w /source/out \
+            -e ARCH=${{ matrix.ARCH }} \
+            -e GITHUB_ACTIONS -e GITHUB_RUN_NUMBER debian-ports bash /source/ci/build-in-debian.sh
+          sudo chown -R "$(id -u):$(id -g)" out
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimagetool-${{ matrix.ARCH }}.build
+          path: |
+            out/appimagetool*.AppImage*
+
   upload:
     name: Create release and upload artifacts
     needs:
       - build
+      - build-debian-ports
+    # Debian ports is unstable by nature and its job runs emulated for hours: when
+    # it fails, the release still goes out with the other architectures
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
