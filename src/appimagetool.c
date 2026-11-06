@@ -1321,7 +1321,7 @@ main (int argc, char *argv[])
             }
         }
         if (verbose)
-            printf("Size of the embedded runtime: %d bytes\n", size);
+            printf("Size of the embedded runtime: %zu bytes\n", size);
         
         if (!no_check_permissions)
             check_appdir_permissions(source);
