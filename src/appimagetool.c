@@ -787,13 +787,19 @@ void extract_arch_from_text(gchar *archname, const gchar* sourcename, bool* arch
     }
 }
 
+/* Returns the e_machine field of an ELF file, or 0 if the file is not an ELF file */
 int16_t read_elf_e_machine_field(const gchar* file_path) {
     int16_t e_machine = 0x00;
+    unsigned char magic[4] = {0};
     FILE* file = 0;
     file = fopen(file_path, "rb");
     if (file) {
-        fseek(file, 0x12, SEEK_SET);
-        fread(&e_machine, sizeof(e_machine), 1, file);
+        /* Only ELF files tell the architecture: anything else (e.g., a shell script
+         * such as AppRun) would yield whatever bytes happen to be at offset 0x12 */
+        if (fread(magic, sizeof(magic), 1, file) == 1 && memcmp(magic, "\x7f" "ELF", sizeof(magic)) == 0) {
+            if (fseek(file, 0x12, SEEK_SET) != 0 || fread(&e_machine, sizeof(e_machine), 1, file) != 1)
+                e_machine = 0x00;
+        }
         fclose(file);
         e_machine = GINT16_FROM_LE(e_machine);
     }
