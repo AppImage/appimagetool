@@ -30,6 +30,12 @@
     #define RELEASE_NAME "continuous build"
 #endif
 
+#define _GNU_SOURCE
+#include <ftw.h>
+#include <stdarg.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 
 #include <glib.h>
@@ -78,6 +84,7 @@ static gboolean verbose = FALSE;
 static gboolean showVersionOnly = FALSE;
 static gboolean sign = FALSE;
 static gboolean no_appstream = FALSE;
+static gboolean no_check_permissions = FALSE;
 gchar **remaining_args = NULL;
 gchar *updateinformation = NULL;
 static gboolean guess_update_information = FALSE;
@@ -91,13 +98,411 @@ gchar *file_url;
 
 // #####################################################################
 
-static void die(const char *msg) {
-    fprintf(stderr, "%s\n", msg);
-    exit(1);
+// used to change logging behavior in GitHub actions to annotate builds in the UI
+// this should help people notice problems and fix them rather than ignore them
+static int running_in_github_actions(void) {
+    const char *value = getenv("GITHUB_ACTIONS");
+    return value != NULL && strcmp(value, "true") == 0;
+}
+
+// mark fmt as a printf-style format string to, e.g., IDEs, and compilers themselves
+// only GCC and Clang support __attribute__, therefore using a macro to only declare these to maximize compiler compatibility
+#if defined(__GNUC__) || defined(__clang__)
+#  define ATTR_PRINTF(fmt_idx, arg_idx) \
+      __attribute__((format(printf, fmt_idx, arg_idx)))
+#else
+#  define ATTR_PRINTF(fmt_idx, arg_idx)
+#endif
+
+typedef enum {
+    LOG_DEBUG,
+    LOG_INFO,
+    LOG_WARNING,
+    LOG_ERROR
+} log_level;
+
+typedef struct {
+    const char *github_command;
+    const char *fallback_prefix;
+} log_level_info;
+
+static const log_level_info LOG_LEVELS[] = {
+    [LOG_DEBUG] = { .github_command = NULL, .fallback_prefix = "DEBUG" },
+    [LOG_INFO] = { .github_command = NULL, .fallback_prefix = "INFO" },
+    [LOG_WARNING] = { .github_command = "warning", .fallback_prefix = "WARNING" },
+    [LOG_ERROR]   = { .github_command = "error",   .fallback_prefix = "ERROR"   },
+};
+
+static void ATTR_PRINTF(2, 0) log_message(const log_level level, const char *fmt, const va_list ap)
+{
+    const log_level_info *info = &LOG_LEVELS[level];
+    assert(info != NULL);
+
+    if (running_in_github_actions() && info->github_command != NULL) {
+        fprintf(stderr, "::%s::", info->github_command);
+    } else {
+        fprintf(stderr, "%s: ", info->fallback_prefix);
+    }
+
+    // this is plain C, therefore a lot of boilerplate code is needed
+    vfprintf(stderr, fmt, ap);
+    fputc('\n', stderr);
+}
+
+static void ATTR_PRINTF(1, 2) log_debug(const char *fmt, ...) {
+    // this is plain C, therefore a lot of boilerplate code is needed
+    va_list ap;
+    va_start(ap, fmt);
+    log_message(LOG_DEBUG, fmt, ap);
+    va_end(ap);
+}
+
+static void ATTR_PRINTF(1, 2) log_info(const char *fmt, ...) {
+    // this is plain C, therefore a lot of boilerplate code is needed
+    va_list ap;
+    va_start(ap, fmt);
+    log_message(LOG_INFO, fmt, ap);
+    va_end(ap);
+}
+
+static void ATTR_PRINTF(1, 2) log_warning(const char *fmt, ...) {
+    // this is plain C, therefore a lot of boilerplate code is needed
+    va_list ap;
+    va_start(ap, fmt);
+    log_message(LOG_WARNING, fmt, ap);
+    va_end(ap);
+}
+
+static void ATTR_PRINTF(1, 2) log_error(const char *fmt, ...) {
+    // this is plain C, therefore a lot of boilerplate code is needed
+    va_list ap;
+    va_start(ap, fmt);
+    log_message(LOG_ERROR, fmt, ap);
+    va_end(ap);
+}
+
+static void ATTR_PRINTF(1, 2) die(const char *fmt, ...) {
+    // this is plain C, therefore a lot of boilerplate code is needed
+    va_list ap;
+    va_start(ap, fmt);
+    log_error(fmt, ap);
+    va_end(ap);
+    exit(EXIT_FAILURE);
 }
 
 /* Generate a squashfs filesystem using mksquashfs on the $PATH 
 * execlp(), execvp(), and execvpe() search on the $PATH */
+/* Checks of the AppDir before packaging, in two severities.
+ *
+ * ERRORS stop appimagetool (exit code 1, no AppImage): problems that make the
+ * AppImage unusable or that cannot be fixed afterwards: the permissions of the
+ * AppDir itself (its top-level directory) and of the files that make an AppDir
+ * an AppImage (AppRun, .DirIcon, the .desktop file and the icon file in its
+ * top level), and a missing, broken or SVG .DirIcon.
+ *
+ * WARNINGS do not stop anything (exit code 0) but are collected and printed
+ * together at the very end of the output, where they are easy to find in long
+ * CI logs, because AppImages with these problems fail the automated tests at
+ * https://appimage.github.io. They may become errors in a future version.
+ *
+ * Modes are only checked, never changed: the packager has to decide how to fix
+ * them. Every message names the path, what exactly is wrong and the command
+ * that fixes it, because the packager cannot be expected to know how AppImages
+ * are mounted and run (by other users than the one who packaged them). */
+static int permission_problems = 0;       /* errors */
+static GPtrArray *deferred_warnings = NULL; /* formatted warnings, printed at exit */
+static gboolean mode_warnings = FALSE;    /* any warning that "chmod -R a+rX" fixes */
+static gboolean build_aborted = FALSE;    /* an error stopped appimagetool, no AppImage */
+static gchar *appdir_icon_file = NULL;    /* icon file in the top level, found from Icon= */
+
+#define MAX_CRITICAL 32
+static struct { dev_t dev; ino_t ino; } critical_files[MAX_CRITICAL];
+static int n_critical_files = 0;
+
+static void add_critical_file(const char *path) {
+    struct stat st;
+    if (n_critical_files < MAX_CRITICAL && path != NULL && stat(path, &st) == 0 && S_ISREG(st.st_mode)) {
+        critical_files[n_critical_files].dev = st.st_dev;
+        critical_files[n_critical_files].ino = st.st_ino;
+        n_critical_files++;
+    }
+}
+
+static gboolean is_critical_file(const struct stat *st) {
+    for (int i = 0; i < n_critical_files; i++)
+        if (critical_files[i].dev == st->st_dev && critical_files[i].ino == st->st_ino)
+            return TRUE;
+    return FALSE;
+}
+
+static void print_warning_banner(void) {
+    if (deferred_warnings == NULL || deferred_warnings->len == 0)
+        return;
+    guint n = deferred_warnings->len;
+    fflush(stdout);
+    fprintf(stderr, "\n"
+            "################################################################################\n"
+            "#  appimagetool: %u WARNING%s ABOUT YOUR APPDIR - PLEASE FIX %s\n"
+            "################################################################################\n"
+            "If these are not fixed, this AppImage would very likely FAIL the automated tests\n"
+            "at https://appimage.github.io, and may crash with 'Permission\n"
+            "denied' or similar errors for users other than you.\n",
+            n, n == 1 ? "" : "S", n == 1 ? "IT" : "THEM");
+    if (build_aborted)
+        fprintf(stderr, "(These come in addition to the ERROR(S) above, which stopped the build.)\n\n");
+    else
+        fprintf(stderr, "appimagetool exits with code 0 because of warnings only. THIS MAY CHANGE IN A\n"
+                        "FUTURE VERSION, when these warnings may become errors that stop the build.\n\n");
+    for (guint i = 0; i < n; i++) {
+        log_warning("Problem %u/%u: %s", i + 1, n, (const char *) g_ptr_array_index(deferred_warnings, i));
+    }
+    if (mode_warnings)
+        fprintf(stderr, "To fix all read/execute permission warnings at once, run 'chmod -R a+rX' on the\n"
+                        "AppDir and package again (it does not fix setuid/setgid warnings).\n\n");
+    if (!build_aborted)
+        fprintf(stderr, "(Reminder: %u warning%s above, the AppImage was created anyway.)\n", n,
+                n == 1 ? "" : "s");
+}
+
+/* Reports one problem. Errors are printed immediately, warnings are kept until
+ * the end of the output */
+static void report_problem(gboolean is_error, const char *path, const char *what, const char *fix_format, ...) {
+    gchar *quoted = g_shell_quote(path);
+    va_list args;
+    va_start(args, fix_format);
+    gchar *fix = g_strdup_vprintf(fix_format, args);
+    va_end(args);
+    if (is_error) {
+        log_error("%s\n       Problem: %s\n       Fix:     %s %s\n\n", path, what, fix, quoted);
+        permission_problems++;
+    } else {
+        if (deferred_warnings == NULL) {
+            deferred_warnings = g_ptr_array_new_with_free_func(g_free);
+            atexit(print_warning_banner);
+        }
+        g_ptr_array_add(deferred_warnings,
+                        g_strdup_printf("%s\n       Problem: %s\n       Fix:     %s %s\n", path, what, fix, quoted));
+    }
+    g_free(fix);
+    g_free(quoted);
+}
+
+static void mode_string(mode_t mode, char *out) {
+    const char *rwx = "rwxrwxrwx";
+    for (int i = 0; i < 9; i++)
+        out[i] = (mode & (0400 >> i)) ? rwx[i] : '-';
+    out[9] = '\0';
+}
+
+static void require_mode(gboolean is_error, const char *path, const struct stat *st, mode_t wanted) {
+    mode_t mode = st->st_mode & 07777;
+    mode_t missing = wanted & ~mode;
+    if (missing == 0)
+        return;
+    char have[10], need[10];
+    mode_string(mode, have);
+    mode_string(mode | wanted, need);
+    const char *kind = S_ISDIR(st->st_mode) ? "directory" : (wanted & 0111) ? "program/script" : "file";
+    gchar *what = g_strdup_printf("this %s has mode %04o (%s), so some users (group and/or others) cannot %s it. "
+                                  "AppImages are run by users other than the one who packaged them, who would get "
+                                  "'Permission denied'. It needs at least mode %04o (%s)",
+                                  kind, (unsigned) mode, have,
+                                  (missing & 0444) && (missing & 0111) ? "read and execute"
+                                  : (missing & 0444) ? (S_ISDIR(st->st_mode) ? "list" : "read") : "execute",
+                                  (unsigned) ((mode | wanted) & 0777), need);
+    report_problem(is_error, path, what, "chmod %s%s", (missing & 0444) ? "a+r" : "",
+                   (missing & 0111) ? ((missing & 0444) ? ",a+x" : "a+x") : "");
+    if (!is_error)
+        mode_warnings = TRUE;
+    g_free(what);
+}
+
+static int check_permissions_cb(const char *path, const struct stat *st, int type, struct FTW *ftw) {
+    gboolean is_top = ftw->level == 0;
+    if (type == FTW_SL || type == FTW_SLN)
+        return 0;
+    if (type == FTW_DNR || type == FTW_NS) {
+        report_problem(is_top, path, "cannot be accessed by the user running appimagetool (unreadable directory or "
+                             "missing entry); if it is owned by another user such as root, run as that user "
+                             "or change the owner, e.g. with 'sudo chown -R $(id -un):$(id -gn) <AppDir>'. "
+                             "Then", "chmod a+rx");
+        return 0;
+    }
+    if (type == FTW_D || type == FTW_DP)
+        require_mode(is_top, path, st, 0555);
+    else if (S_ISREG(st->st_mode)) {
+        require_mode(is_critical_file(st), path, st, (st->st_mode & S_IXUSR) ? 0555 : 0444);
+        /* The setuid/setgid bits cannot work inside an AppImage (it is mounted
+         * nosuid); such binaries, e.g. browser sandboxes or fusermount, need
+         * a different approach by the packager instead of a masked failure */
+        if (st->st_mode & (S_ISUID | S_ISGID)) {
+            gchar *what = g_strdup_printf("this file has the setuid/setgid bit set (mode %04o). AppImages are "
+                                          "mounted with 'nosuid', so this bit has no effect and the program would "
+                                          "run without the privileges it expects and fail in confusing ways. "
+                                          "Do not bundle programs that rely on it (e.g. chrome-sandbox, "
+                                          "fusermount, sudo); use the host's copy or an approach that works "
+                                          "unprivileged (e.g. user namespaces). Only if the program works "
+                                          "without the bit, you can clear it",
+                                          (unsigned) (st->st_mode & 07777));
+            report_problem(FALSE, path, what, "chmod u-s,g-s");
+            g_free(what);
+        }
+    }
+    return 0;
+}
+
+static void check_appdir_permissions(const char *appdir) {
+    /* Files that make an AppDir an AppImage: problems with them are errors */
+    gchar *apprun_path = g_build_filename(appdir, "AppRun", NULL);
+    gchar *diricon_path = g_build_filename(appdir, ".DirIcon", NULL);
+    add_critical_file(apprun_path);
+    add_critical_file(diricon_path);
+    add_critical_file(appdir_icon_file);
+    GDir *dir = g_dir_open(appdir, 0, NULL);
+    const gchar *name;
+    while (dir != NULL && (name = g_dir_read_name(dir)) != NULL) {
+        if (g_str_has_suffix(name, ".desktop")) {
+            gchar *p = g_build_filename(appdir, name, NULL);
+            add_critical_file(p);
+            g_free(p);
+        }
+    }
+    if (dir != NULL)
+        g_dir_close(dir);
+    g_free(diricon_path);
+
+    if (nftw(appdir, check_permissions_cb, 64, FTW_PHYS) != 0)
+        permission_problems++;
+    const char *launchers[] = { "AppRun", "AppRun.wrapped" };
+    for (size_t i = 0; i < sizeof(launchers) / sizeof(launchers[0]); i++) {
+        gchar *launcher = g_build_filename(appdir, launchers[i], NULL);
+        struct stat st;
+        if (stat(launcher, &st) == 0) {
+            /* A launcher the owner can execute was already checked above */
+            if (!(st.st_mode & S_IXUSR))
+                require_mode(i == 0, launcher, &st, 0555);
+        } else if (i == 0) {
+            report_problem(TRUE, launcher, "AppRun does not exist (or is a broken symlink), but every AppDir needs "
+                                           "an executable AppRun (a file or a symlink to one). Create it, e.g. a "
+                                           "shell script that starts your program, or a symlink to your main "
+                                           "executable, and then run",
+                           "chmod a+rx");
+        }
+        g_free(launcher);
+    }
+    if (permission_problems > 0) {
+        gchar *quoted = g_shell_quote(appdir);
+        gchar *apprun = g_shell_quote(apprun_path);
+        fprintf(stderr, "appimagetool: found %d ERROR(S) in the AppDir, nothing was changed and no AppImage "
+                        "was created.\n"
+                        "Fix the paths listed above, then run appimagetool again. To fix all read/execute "
+                        "permissions at once, run:\n"
+                        "    chmod -R a+rX %s\n"
+                        "    chmod a+rx %s\n"
+                        "If the files belong to root, prefix the chmod commands with sudo or first take ownership with "
+                        "this command: sudo chown -R $(id -un):$(id -gn) %s\n"
+                        "If you are certain that your AppImage needs these modes, pass --no-check-permissions "
+                        "to skip this check.\n", permission_problems, quoted, apprun, quoted);
+        build_aborted = TRUE;
+        g_free(apprun);
+        g_free(quoted);
+        g_free(apprun_path);
+        exit(EXIT_FAILURE);
+    }
+    g_free(apprun_path);
+}
+
+/* .DirIcon is shown by file managers and used by appimage.github.io; the AppImage is not
+ * created if it is missing, a broken symlink, not a regular file, or an SVG. Each
+ * message says exactly what is wrong and how to fix it. */
+static void diricon_warning(const char *diricon_path, const char *what, const char *fix) {
+    log_error("%s\n       Problem: %s\n       Fix:     %s\n\n", diricon_path, what, fix);
+    log_warning("appimagetool: AppImage will be created although .DirIcon is not valid. In a future release, appimagetool will refuse to build the AppImage.\n");
+}
+
+static gboolean file_looks_like_svg(const char *path) {
+    if (g_str_has_suffix(path, ".svg") || g_str_has_suffix(path, ".svgz"))
+        return TRUE;
+    char buf[1025];
+    FILE *f = fopen(path, "rb");
+    if (f == NULL)
+        return FALSE;
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = '\0';
+    return strstr(buf, "<svg") != NULL;
+}
+
+// note: will be enforced in a future release!
+static void check_diricon(const char *source, const char *icon_name, const char *icon_file_path) {
+    (void) icon_file_path;
+    gchar *diricon_path = g_build_filename(source, ".DirIcon", NULL);
+    const char *icon = icon_name != NULL ? icon_name : "<Icon= value>";
+    gchar *png_path = g_strdup_printf("%s/%s.png", source, icon);
+    gchar *q_diricon = g_shell_quote(diricon_path);
+    gchar *q_png = g_shell_quote(png_path);
+    gchar *fix_new_icon = g_strdup_printf("put a PNG icon (256x256 pixels recommended) at %s, i.e. into the top "
+                                          "level of the AppDir with the name from Icon=%s in your .desktop file "
+                                          "(e.g. copy it from usr/share/icons/hicolor/256x256/apps/). "
+                                          "appimagetool then creates .DirIcon itself",
+                                          q_png, icon);
+    struct stat lst, st;
+    if (lstat(diricon_path, &lst) != 0) {
+        gchar *what = g_strdup_printf(".DirIcon does not exist, and no %s.png or %s.xpm was found in the top level of "
+                                      "the AppDir (Icon=%s in the .desktop file) to create it from", icon, icon, icon);
+        diricon_warning(diricon_path, what, fix_new_icon);
+    } else if (S_ISLNK(lst.st_mode) && stat(diricon_path, &st) != 0) {
+        char target[PATH_MAX];
+        ssize_t len = readlink(diricon_path, target, sizeof(target) - 1);
+        target[len > 0 ? len : 0] = '\0';
+        gchar *what = g_strdup_printf(".DirIcon is a symlink to '%s', but that target does not exist (broken "
+                                      "symlink). It must point to a file inside the AppDir; paths outside it, such "
+                                      "as /usr/share/..., do not exist on other systems", target);
+        gchar *fix = g_strdup_printf("%s. Then delete the broken symlink with 'rm %s'", fix_new_icon, q_diricon);
+        diricon_warning(diricon_path, what, fix);
+    } else if (stat(diricon_path, &st) != 0 || !S_ISREG(st.st_mode)) {
+        gchar *what = g_strdup_printf(".DirIcon is a %s, but it must be a PNG image file (or a symlink to one)",
+                                      S_ISDIR(st.st_mode) ? "directory" : "special file");
+        gchar *fix = g_strdup_printf("delete it with 'rm -r %s', then %s", q_diricon, fix_new_icon);
+        diricon_warning(diricon_path, what, fix);
+    } else if (file_looks_like_svg(diricon_path)) {
+        char resolved[PATH_MAX];
+        const char *real = realpath(diricon_path, resolved) != NULL ? resolved : diricon_path;
+        gchar *q_real = g_shell_quote(real);
+        gchar *what = g_strdup_printf(".DirIcon is an SVG image (%s). SVG is hard to parse, so file managers and "
+                                      "thumbnailers cannot be expected to handle it; .DirIcon must be a PNG", real);
+        gchar *fix = g_strdup_printf("convert it to a PNG with 'rsvg-convert -w 256 -h 256 %s -o %s' (or "
+                                     "ImageMagick/Inkscape) and delete the SVG .DirIcon with 'rm %s'; "
+                                     "appimagetool then creates .DirIcon from %s.png",
+                                     q_real, q_png, q_diricon, icon);
+        g_free(q_real);
+        diricon_warning(diricon_path, what, fix);
+    } else {
+        /* Not an error, but unusual: warn like the tests at appimage.github.io do */
+        unsigned char magic[16] = { 0 };
+        FILE *f = fopen(diricon_path, "rb");
+        size_t n = f != NULL ? fread(magic, 1, sizeof(magic) - 1, f) : 0;
+        if (f != NULL)
+            fclose(f);
+        if (n < 8 || (memcmp(magic, "\x89PNG", 4) != 0 && memcmp(magic, "/* XPM */", 9) != 0)) {
+            if (deferred_warnings == NULL) {
+                deferred_warnings = g_ptr_array_new_with_free_func(g_free);
+                atexit(print_warning_banner);
+            }
+            g_ptr_array_add(deferred_warnings,
+                            g_strdup_printf("%s\n       Problem: .DirIcon is neither a PNG nor an XPM image, so "
+                                            "file managers may not be able to show it\n       Fix:     replace it "
+                                            "with a PNG image, e.g. %s\n",
+                                            diricon_path, fix_new_icon));
+        }
+    }
+    g_free(fix_new_icon);
+    g_free(png_path);
+    g_free(q_png);
+    g_free(q_diricon);
+    g_free(diricon_path);
+}
+
 int sfs_mksquashfs(char *source, char *destination, int offset) {
     pid_t pid = fork();
     if (pid == -1) {
@@ -184,7 +589,7 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
         // if an exclude file has been passed on the command line, should be used, too
         if (exclude_file != 0 && strlen(exclude_file) > 0) {
             if (access(exclude_file, F_OK) < 0) {
-                printf("WARNING: exclude file %s not found!", exclude_file);
+                log_warning("exclude file %s not found!", exclude_file);
                 return -1;
             }
 
@@ -218,7 +623,7 @@ int sfs_mksquashfs(char *source, char *destination, int offset) {
         perror("execvp(\"mksquashfs\") failed");
 #else
         execvp(pathToMksquashfs, args);
-        fprintf(stderr, "execvp(\"%s\") failed: %s\n", pathToMksquashfs, strerror(errno));
+        log_error("execvp(\"%s\") failed: %s\n", pathToMksquashfs, strerror(errno));
 #endif
         return -1; // exec never returns
     }
@@ -531,9 +936,7 @@ bool readFile(char* filename, size_t* size, char** buffer) {
 int run_external(const char *filename, char *const argv []) {
     int pid = fork();
     if (pid < 0) {
-        g_print("run_external: fork failed");
-        // fork failed
-        exit(1);
+        die("run_external: fork failed");
     } else if (pid == 0) {
         // blocks env defined in resources/AppRun
         unsetenv("LD_LIBRARY_PATH");
@@ -545,8 +948,7 @@ int run_external(const char *filename, char *const argv []) {
         // runs command
         execv(filename, argv);
         // execv(3) returns, indicating error
-        g_print("run_external: subprocess execv(3) got error %s", g_strerror(errno));
-        exit(1);
+        die("run_external: subprocess execv(3) got error %s", g_strerror(errno));
     } else {
         int wstatus;
         if (waitpid(pid, &wstatus, 0) == -1) {
@@ -575,6 +977,7 @@ static GOptionEntry entries[] =
     { "comp", 0, 0, G_OPTION_ARG_STRING, &sqfs_comp, "Squashfs compression (default: zstd)", NULL },
     { "mksquashfs-opt", 0, 0, G_OPTION_ARG_STRING_ARRAY, &sqfs_opts, "Argument to pass through to mksquashfs; can be specified multiple times", NULL },
     { "no-appstream", 'n', 0, G_OPTION_ARG_NONE, &no_appstream, "Do not check AppStream metadata", NULL },
+    { "no-check-permissions", 0, 0, G_OPTION_ARG_NONE, &no_check_permissions, "Do not check that AppDir files are readable and AppRun is executable for everyone", NULL },
     { "exclude-file", 0, 0, G_OPTION_ARG_STRING, &exclude_file, _exclude_file_desc, NULL },
     { "runtime-file", 0, 0, G_OPTION_ARG_STRING, &runtime_file, "Runtime file to use", NULL },
     { "sign-key", 0, 0, G_OPTION_ARG_STRING, &sign_key, "Key ID to use for gpg[2] signatures", NULL},
@@ -648,8 +1051,7 @@ main (int argc, char *argv[])
         int ret;
         ret = chdir(owd_env);
         if (ret != 0){
-            fprintf(stderr, "Could not cd into %s\n", owd_env);
-            exit(1);
+            die("Could not cd into %s\n", owd_env);
         }
     }
 
@@ -668,8 +1070,7 @@ main (int argc, char *argv[])
     // g_option_context_add_group (context, gtk_get_option_group (TRUE));
     if (!g_option_context_parse (context, &argc, &argv, &error))
     {
-        fprintf(stderr, "Option parsing failed: %s\n", error->message);
-        exit(1);
+        die("Option parsing failed: %s\n", error->message);
     }
 
     if (file_url && strlen(file_url) == 0) 
@@ -696,30 +1097,29 @@ main (int argc, char *argv[])
         // build path relative to appimagetool binary
         char *appimagetoolDirectory = dirname(realpath("/proc/self/exe", NULL));
         if (!appimagetoolDirectory) {
-            g_print("Could not access /proc/self/exe\n");
-            exit(1);
+            die("Could not access /proc/self/exe");
         }
 
         pathToMksquashfs = g_build_filename(appimagetoolDirectory, "..", AUXILIARY_FILES_DESTINATION, "mksquashfs", NULL);
 
         if (!g_file_test(pathToMksquashfs, G_FILE_TEST_EXISTS | G_FILE_TEST_IS_EXECUTABLE)) {
-            g_printf("No such file or directory: %s\n", pathToMksquashfs);
+            log_error("No such file or directory: %s\n", pathToMksquashfs);
             g_free(pathToMksquashfs);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
     }
 #endif
     if(! g_find_program_in_path ("desktop-file-validate"))
         die("desktop-file-validate command is missing, please install it");
     if(! g_find_program_in_path ("zsyncmake"))
-        g_print("WARNING: zsyncmake command is missing, please install it if you want to use binary delta updates\n");
+        log_warning("zsyncmake command is missing, please install it if you want to use binary delta updates\n");
     if(! no_appstream)
         if(! g_find_program_in_path ("appstreamcli"))
-            g_print("WARNING: appstreamcli command is missing, please install it if you want to use AppStream metadata\n");
+            log_warning("appstreamcli command is missing, please install it if you want to use AppStream metadata\n");
     if(! g_find_program_in_path ("gpg2") && ! g_find_program_in_path ("gpg"))
-        g_print("WARNING: gpg2 or gpg command is missing, please install it if you want to create digital signatures\n");
+        log_warning("gpg2 or gpg command is missing, please install it if you want to create digital signatures\n");
     if(! g_find_program_in_path ("sha256sum") && ! g_find_program_in_path ("shasum"))
-        g_print("WARNING: sha256sum or shasum command is missing, please install it if you want to create digital signatures\n");
+        log_warning("sha256sum or shasum command is missing, please install it if you want to create digital signatures\n");
     
     if(!&remaining_args[0])
         die("SOURCE is missing");
@@ -788,9 +1188,7 @@ main (int argc, char *argv[])
 
         if(g_find_program_in_path ("desktop-file-validate")) {
             if(validate_desktop_file(desktop_file) != 0){
-                fprintf(stderr, "ERROR: Desktop file contains errors. Please fix them. Please see\n");
-                fprintf(stderr, "       https://specifications.freedesktop.org/desktop-entry-spec/latest/index.html");
-                die("       for more information.");
+                die("Desktop file contains  errors. Please fix them. Please see https://specifications.freedesktop.org/desktop-entry-spec/latest/index.html for more information.");
             }
         }
 
@@ -819,12 +1217,12 @@ main (int argc, char *argv[])
             find_arch(source, "*.so.*", archs);
             int countArchs = count_archs(archs);
             if (countArchs != 1) {
-                if (countArchs < 1)
-                    fprintf(stderr, "Unable to guess the architecture of the AppDir source directory \"%s\"\n", remaining_args[0]);
-                else
-                    fprintf(stderr, "More than one architectures were found of the AppDir source directory \"%s\"\n", remaining_args[0]);
-                fprintf(stderr, "A valid architecture with the ARCH environmental variable should be provided\ne.g. ARCH=x86_64 %s", argv[0]),
-                        die(" ...");
+                if (countArchs < 1) {
+                    log_error("Unable to guess the architecture of the AppDir source directory \"%s\"", remaining_args[0]);
+                } else {
+                    log_error("More than one architectures were found of the AppDir source directory \"%s\"", remaining_args[0]);
+                }
+                die("A valid architecture with the ARCH environmental variable should be provided, e.g. ARCH=x86_64 %s...", argv[0]);
             }
         }
         gchar* arch = getArchName(archs);
@@ -870,8 +1268,7 @@ main (int argc, char *argv[])
             g_key_file_set_string(kf, G_KEY_FILE_DESKTOP_GROUP, "X-AppImage-Version", version_env);
 
             if (!g_key_file_save_to_file(kf, desktop_file, NULL)) {
-                fprintf(stderr, "Could not save modified desktop file\n");
-                exit(1);
+                die("Could not save modified desktop file");
             }
         }
 
@@ -880,40 +1277,36 @@ main (int argc, char *argv[])
         gchar* icon_name = get_desktop_entry(kf, "Icon");
         gchar* icon_file_path = NULL;
         gchar* icon_file_png;
-        gchar* icon_file_svg;
         gchar* icon_file_xpm;
+        /* No .svg: SVG is hard to parse, so consumers of .DirIcon (file managers,
+         * thumbnailers) cannot be expected to handle it reliably; PNG is preferred,
+         * XPM is the last resort */
         icon_file_png = g_strdup_printf("%s/%s.png", source, icon_name);
-        icon_file_svg = g_strdup_printf("%s/%s.svg", source, icon_name);
         icon_file_xpm = g_strdup_printf("%s/%s.xpm", source, icon_name);
         if (g_file_test(icon_file_png, G_FILE_TEST_IS_REGULAR)) {
             icon_file_path = icon_file_png;
-        } else if(g_file_test(icon_file_svg, G_FILE_TEST_IS_REGULAR)) {
-            icon_file_path = icon_file_svg;
         } else if(g_file_test(icon_file_xpm, G_FILE_TEST_IS_REGULAR)) {
             icon_file_path = icon_file_xpm;
-        } else {
-            fprintf (stderr, "%s{.png,.svg,.xpm} defined in desktop file but not found\n", icon_name);
-            fprintf (stderr, "For example, you could put a 256x256 pixel png into\n");
-            gchar *icon_name_with_png = g_strconcat(icon_name, ".png", NULL);
-            gchar *example_path = g_build_filename(source, "/", icon_name_with_png, NULL);
-            fprintf (stderr, "%s\n", example_path);
-            exit(1);
         }
-       
-        /* Check if .DirIcon is present in source AppDir */
+
+        /* Prefer a .DirIcon derived from the desktop file; a real file already
+         * there is kept, any other pre-existing one (symlink) is replaced */
         gchar *diricon_path = g_build_filename(source, ".DirIcon", NULL);
-        
-        if (! g_file_test(diricon_path, G_FILE_TEST_EXISTS)){
-            fprintf (stderr, "Deleting pre-existing .DirIcon\n");
-            g_unlink(diricon_path);
-        }
-        if (! g_file_test(diricon_path, G_FILE_TEST_IS_REGULAR)){
+        gboolean diricon_is_real_file = g_file_test(diricon_path, G_FILE_TEST_IS_REGULAR)
+            && !g_file_test(diricon_path, G_FILE_TEST_IS_SYMLINK);
+        if (icon_file_path != NULL && !diricon_is_real_file) {
+            if (g_file_test(diricon_path, G_FILE_TEST_IS_SYMLINK) && g_unlink(diricon_path) != 0)
+                die("Could not remove pre-existing .DirIcon symlink");
             fprintf (stderr, "Creating .DirIcon symlink based on information from desktop file\n");
-            int res = symlink(basename(icon_file_path), diricon_path);
-            if(res)
+            if (symlink(basename(icon_file_path), diricon_path) != 0)
                 die("Could not symlink .DirIcon");
         }
-        
+
+        /* Errors if .DirIcon is missing, broken, not a file or an SVG; each one
+         * says what is wrong and how to fix it */
+        appdir_icon_file = icon_file_path != NULL ? g_strdup(icon_file_path) : NULL;
+        check_diricon(source, icon_name, icon_file_path);
+
         /* Check if AppStream upstream metadata is present in source AppDir */
         if(! no_appstream){
             char application_id[PATH_MAX];
@@ -921,11 +1314,13 @@ main (int argc, char *argv[])
             replacestr(application_id, ".desktop", ".appdata.xml");
             gchar *appdata_path = g_build_filename(source, "/usr/share/metainfo/", application_id, NULL);
             if (! g_file_test(appdata_path, G_FILE_TEST_IS_REGULAR)){
-                fprintf (stderr, "WARNING: AppStream upstream metadata is missing, please consider creating it\n");
-                fprintf (stderr, "         in usr/share/metainfo/%s\n", application_id);
-                fprintf (stderr, "         Please see https://www.freedesktop.org/software/appstream/docs/chap-Quickstart.html#sect-Quickstart-DesktopApps\n");
-                fprintf (stderr, "         for more information or use the generator at\n");
-                fprintf (stderr, "         https://docs.appimage.org/packaging-guide/optional/appstream.html#using-the-appstream-generator\n");
+                log_warning(
+                    "AppStream upstream metadata is missing, please consider creating it in usr/share/metainfo/%s."
+                    "Please see https://www.freedesktop.org/software/appstream/docs/chap-Quickstart.html#sect-Quickstart-DesktopApps"
+                    "for more information or use the generator at"
+                    "https://docs.appimage.org/packaging-guide/optional/appstream.html#using-the-appstream-generator",
+                    application_id
+                );
             } else {
                 fprintf (stderr, "AppStream upstream metadata found in usr/share/metainfo/%s\n", application_id);
                 /* Use ximion's appstreamcli to make sure that desktop file and appdata match together */
@@ -983,6 +1378,8 @@ main (int argc, char *argv[])
         if (verbose)
             printf("Size of the embedded runtime: %d bytes\n", size);
         
+        if (!no_check_permissions)
+            check_appdir_permissions(source);
         int result = sfs_mksquashfs(source, destination, size);
         if(result != 0)
             die("sfs_mksquashfs error");
@@ -1001,8 +1398,7 @@ main (int argc, char *argv[])
 
         fprintf (stderr, "Marking the AppImage as executable...\n");
         if (chmod (destination, 0755) < 0) {
-            printf("Could not set executable bit, aborting\n");
-            exit(1);
+            die("Could not set executable bit, aborting");
         }
         
         /* If the user has not provided update information but we know this is a CI build,
@@ -1145,13 +1541,11 @@ main (int argc, char *argv[])
             static const unsigned long section_size = 16;
 
             if (digest_md5_length < section_size) {
-                fprintf(
-                    stderr,
+                die(
                     ".digest_md5 section in runtime's ELF header is too small"
-                    "(found %lu bytes, minimum required: %lu bytes)\n",
+                    "(found %lu bytes, minimum required: %lu bytes)",
                     digest_md5_length, section_size
                 );
-                exit(1);
             }
 
             char digest_buffer[section_size];
@@ -1215,14 +1609,12 @@ main (int argc, char *argv[])
                 GSubprocess* proc = g_subprocess_newv(zsyncmake_command, flags, &error);
 
                 if (proc == NULL) {
-                    fprintf(stderr, "ERROR: failed to create zsyncmake process: %s\n", error->message);
-                    exit(1);
+                    die("failed to create zsyncmake process: %s\n", error->message);
                 }
 
                 if (!g_subprocess_wait_check(proc, NULL, &error)) {
-                    fprintf(stderr, "ERROR: zsyncmake returned abnormal exit code: %s\n", error->message);
                     g_object_unref(proc);
-                    exit(1);
+                    die("zsyncmake returned abnormal exit code: %s\n", error->message);
                 }
 
                 g_object_unref(proc);
@@ -1230,7 +1622,7 @@ main (int argc, char *argv[])
         }
 
         fprintf(stderr, "Success\n\n");
-        fprintf(stderr, "Please consider submitting your AppImage to AppImageHub, the crowd-sourced\n");
+        fprintf(stderr, "Please consider submitting your AppImage to appimage.github.io, the crowd-sourced\n");
         fprintf(stderr, "central directory of available AppImages, by opening a pull request\n");
         fprintf(stderr, "at https://github.com/AppImage/appimage.github.io\n");
 
@@ -1241,8 +1633,7 @@ main (int argc, char *argv[])
         die("To be implemented");
         return 1;
     } else {
-        fprintf(stderr, "Error: no such file or directory: %s\n", remaining_args[0]);
-        return 1;
+        die("no such file or directory: %s\n", remaining_args[0]);
     }
 
     // should never be reached

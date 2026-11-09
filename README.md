@@ -62,6 +62,8 @@ Big endian 64 bit POWER (`ppc64`) has no Alpine Linux: run `ARCH=ppc64 bash ./ci
 
 The runtimes for `riscv64`, `ppc64le` and `ppc64` come from the [type2-runtime](https://github.com/AppImage/type2-runtime/releases) releases that have them; with an older release, pass one with `--runtime-file`.
 
+The build scripts download `runtime-$ARCH` from the type2-runtime continuous release. To take it from somewhere else (e.g. the release of a fork of type2-runtime), set `RUNTIME_URL_BASE` to the URL of the directory that holds it; in GitHub Actions, set the repository variable `RUNTIME_URL_BASE`.
+
 ## Changelog
 
 * Unlike previous versions of this tool provided in the [AppImageKit](https://github.com/AppImage/AppImageKit/) repository, this version downloads the latest AppImage runtime (which will become part of the AppImage) from https://github.com/AppImage/type2-runtime/releases. If you do not like this (or if your build system does not have Internet access), you can supply a locally downloaded AppImage runtime using the `APPIMAGETOOL_RUNTIME_FILE` environment variable or `--runtime-file` parameter instead.

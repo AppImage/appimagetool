@@ -43,7 +43,8 @@ cp "$(which zsyncmake)" AppDir/usr/bin
 cp "$repo_root"/resources/AppRun.sh AppDir/AppRun
 chmod +x AppDir/AppRun
 
-wget https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-"$ARCH"
+# RUNTIME_URL_BASE: where runtime-$ARCH is downloaded from (e.g. the release of a fork of type2-runtime)
+wget "${RUNTIME_URL_BASE:-https://github.com/AppImage/type2-runtime/releases/download/continuous}"/runtime-"$ARCH"
 
 pushd AppDir
 ln -s usr/share/applications/appimagetool.desktop .

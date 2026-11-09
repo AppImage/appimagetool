@@ -56,6 +56,7 @@ docker run \
     --rm \
     -i \
     -e ARCH \
+    -e RUNTIME_URL_BASE \
     -e GITHUB_ACTIONS \
     -e GITHUB_RUN_NUMBER \
     -e OUT_UID="$uid" \

@@ -32,9 +32,12 @@ jobs:
 
     env:
       ARCH: ${{ matrix.ARCH }}
+      # optional repository variable: where runtime-$ARCH is downloaded from
+      # (e.g. the release of a fork of type2-runtime); unset, the type2-runtime continuous release
+      RUNTIME_URL_BASE: ${{ vars.RUNTIME_URL_BASE }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: 'recursive'
 
@@ -48,7 +51,7 @@ jobs:
           bash -ex ci/build-in-docker.sh
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # Artifact name
           name: appimagetool-${{ matrix.ARCH }}.build
@@ -104,7 +107,7 @@ jobs:
         run: |
           mkdir -p out
           docker run --rm --platform ${{ matrix.PLATFORM }} -v "$PWD":/source -w /source/out \
-            -e ARCH=${{ matrix.ARCH }} \
+            -e ARCH=${{ matrix.ARCH }} -e RUNTIME_URL_BASE="${{ vars.RUNTIME_URL_BASE }}" \
             -e GITHUB_ACTIONS -e GITHUB_RUN_NUMBER debian-ports bash /source/ci/build-in-debian.sh
           sudo chown -R "$(id -u):$(id -g)" out
 
@@ -126,7 +129,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
       - name: Inspect directory after downloading artifacts
         run: ls -alFR
       - name: Create release and upload artifacts
